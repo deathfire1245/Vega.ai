@@ -1,0 +1,98 @@
+@import url('https://fonts.googleapis.com/css2?family=Anton&family=Figtree:wght@300;400;600;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Anton", sans-serif;
+  
+  --color-ivory: #FFFFF0;
+  --color-amber: #FFBF00;
+  --color-burnt: #FA812F;
+  --color-deep-red: #8B0000;
+  --color-black: #0A0A0A;
+}
+
+@layer base {
+  body {
+    @apply bg-ivory text-black font-sans;
+    margin: 0;
+    padding: 0;
+  }
+  
+  h1, h2, h3, h4, .font-anton {
+    @apply font-display text-black uppercase;
+  }
+}
+
+@layer utilities {
+  .marquee-content {
+    display: flex;
+    white-space: nowrap;
+    animation: marquee 30s linear infinite;
+  }
+
+  @keyframes marquee {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+
+  .stagger-fade-in {
+    opacity: 0;
+    transform: translateY(20px);
+    animation: fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  @keyframes fadeIn {
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .delay-100 { animation-delay: 0.1s; }
+  .delay-200 { animation-delay: 0.2s; }
+  .delay-300 { animation-delay: 0.3s; }
+  
+  .float {
+    animation: float 4s ease-in-out infinite alternate;
+  }
+
+  @keyframes float {
+    from { transform: translateY(-4px) rotate(var(--tw-rotate, 0deg)); }
+    to { transform: translateY(4px) rotate(var(--tw-rotate, 0deg)); }
+  }
+  
+  /* Hard shadows as requested */
+  .shadow-hard {
+    box-shadow: 4px 4px 0px #0A0A0A;
+  }
+  
+  .shadow-hard-lg {
+    box-shadow: 8px 8px 0px #0A0A0A;
+  }
+
+  .animate-progress {
+    width: 0;
+    animation: progress 2s infinite;
+  }
+
+  @keyframes progress {
+    0% { width: 0; left: 0; }
+    50% { width: 100%; left: 0; }
+    100% { width: 0; left: 100%; }
+  }
+}
+
+/* Smooth scroll */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Hide scrollbar but keep functionality if needed */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
