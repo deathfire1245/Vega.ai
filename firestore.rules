@@ -36,6 +36,16 @@ service cloud.firestore {
                       isValidUser(incoming()) &&
                       incoming().userId == existing().userId &&
                       incoming().createdAt == existing().createdAt;
+
+      // Brand Brain Rules
+      match /brandBrain/{brainDocId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Campaigns Rules
+      match /campaigns/{campaignId} {
+        allow read, write: if isOwner(userId);
+      }
     }
   }
 }

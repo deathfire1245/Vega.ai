@@ -28,7 +28,9 @@ import {
   GoogleAuthProvider,
   signInWithPopup
 } from "firebase/auth";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp, collection, addDoc, getDocs, query, orderBy } from "firebase/firestore";
+import { useBrandBrain } from "./hooks/useBrandBrain";
+import { generateContentPack } from "./services/groqService";
 
 type AppView = 'landing' | 'auth' | 'onboarding' | 'dashboard' | 'new-campaign';
 const tier = 'creator';
@@ -154,36 +156,45 @@ const MOCK_CAMPAIGNS: Campaign[] = [
 
 export default function App() {
   const { user, loading } = useAuth();
+  const { brandBrain, isLoading: brainLoading } = useBrandBrain();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [view, setView] = useState<AppView>('landing');
   const [authMode, setAuthMode] = useState<'signup' | 'login'>('signup');
-  const [campaigns, setCampaigns] = useState<Campaign[]>(MOCK_CAMPAIGNS);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [assets, setAssets] = useState<Asset[]>(MOCK_ASSETS);
   const [gallery, setGallery] = useState<GalleryItem[]>(MOCK_GALLERY);
   const [remixesToday, setRemixesToday] = useState(0);
   const [onboardingData, setOnboardingData] = useState<any>(null);
 
   useEffect(() => {
-    if (!loading) {
+    if (!loading && !brainLoading) {
       if (user) {
-        // If logged in but on landing/auth, go to dashboard
+        // If logged in but on landing/auth/onboarding, decide where to go
         if (view === 'landing' || view === 'auth') {
-          setView('dashboard');
+          if (brandBrain) {
+            setView('dashboard');
+          } else {
+            setView('onboarding');
+          }
         }
       } else {
         // If logged out but on protected views, go to landing
-        if (view === 'onboarding' || view === 'dashboard' || view === 'new-campaign') {
+        if (view !== 'landing' && view !== 'auth') {
           setView('landing');
         }
       }
     }
-  }, [user, loading, view]);
+  }, [user, loading, brainLoading, brandBrain, view]);
 
   const handleAuthSuccess = (mode: 'signup' | 'login') => {
     if (mode === 'signup') {
       setView('onboarding');
     } else {
-      setView('dashboard');
+      if (brandBrain) {
+        setView('dashboard');
+      } else {
+        setView('onboarding');
+      }
     }
   };
 
@@ -829,6 +840,8 @@ function SignUpView({ onBack, onSuccess, initialMode = 'signup' }: { onBack: () 
 
 function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => void, onBack: () => void }) {
   const [step, setStep] = useState(1);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [data, setData] = useState({
     brandName: '',
     tagline: '',
@@ -843,8 +856,31 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
   const nextStep = () => setStep(s => Math.min(s + 1, 6));
   const prevStep = () => setStep(s => Math.max(s - 1, 1));
   
-  const handleLaunch = () => {
-    onComplete(data);
+  const handleLaunch = async () => {
+    if (!auth.currentUser) return;
+    
+    setIsSaving(true);
+    setSaveError(null);
+    const uid = auth.currentUser.uid;
+
+    try {
+      // Path as per user request: users/{uid}/brandBrain/current
+      const docRef = doc(db, "users", uid, "brandBrain", "current");
+      await setDoc(docRef, {
+        brandName: data.brandName,
+        brandDescription: data.description,
+        tone: [data.tone],
+        targetAudience: data.audience,
+        contentPillars: [] // Not currently in onboarding UI, so default to empty
+      });
+      onComplete(data);
+    } catch (err: any) {
+      console.error("Failed to save brand brain:", err);
+      // Using context-specific error handling if possible, or just raw message
+      setSaveError(err.message || "Failed to save your Brand Brain. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const tones = [
@@ -1069,19 +1105,30 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
               </div>
             )}
 
-            <div className="mt-16 flex items-center justify-between">
-              <button 
-                onClick={step === 1 ? onBack : prevStep}
-                className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest hover:text-burnt"
-              >
-                <ChevronLeft size={20} /> Back
-              </button>
-              <button 
-                onClick={step === 6 ? handleLaunch : nextStep}
-                className="bg-deep-red text-ivory px-12 py-6 font-bold uppercase text-sm tracking-[0.3em] hover:bg-black transition-all shadow-hard"
-              >
-                {step === 6 ? 'LAUNCH DASHBOARD' : 'CONTINUE'}
-              </button>
+            <div className="mt-16">
+              {saveError && (
+                <div className="mb-8 p-4 border-2 border-deep-red bg-deep-red/5 flex items-center gap-3 text-[10px] font-bold uppercase tracking-widest text-deep-red">
+                  <AlertCircle size={16} />
+                  {saveError}
+                </div>
+              )}
+              
+              <div className="flex items-center justify-between">
+                <button 
+                  onClick={step === 1 ? onBack : prevStep}
+                  disabled={isSaving}
+                  className={`flex items-center gap-2 text-sm font-bold uppercase tracking-widest hover:text-burnt transition-opacity ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <ChevronLeft size={20} /> Back
+                </button>
+                <button 
+                  onClick={step === 6 ? handleLaunch : nextStep}
+                  disabled={isSaving}
+                  className={`bg-deep-red text-ivory px-12 py-6 font-bold uppercase text-sm tracking-[0.3em] transition-all shadow-hard ${isSaving ? 'bg-black/20 cursor-not-allowed' : 'hover:bg-black'}`}
+                >
+                  {isSaving ? 'SAVING...' : (step === 6 ? 'LAUNCH DASHBOARD' : 'CONTINUE')}
+                </button>
+              </div>
             </div>
           </motion.div>
         </AnimatePresence>
@@ -1150,7 +1197,10 @@ function LoadingScreen() {
 }
 
 function NewCampaignFlow({ onCancel, onComplete, setView, gallery }: { onCancel: () => void, onComplete: (c: Campaign) => void, setView: (v: AppView) => void, gallery: GalleryItem[] }) {
+  const { systemPrompt } = useBrandBrain();
   const [step, setStep] = useState(1);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -1221,51 +1271,76 @@ function NewCampaignFlow({ onCancel, onComplete, setView, gallery }: { onCancel:
     setGeneratedContent(content);
   };
 
-  const nextStep = () => {
+  const nextStep = async () => {
     if (step === 2) {
+      if (!systemPrompt) {
+        setGenError("Brand Brain not found. Please complete onboarding first.");
+        return;
+      }
+
+      setIsGenerating(true);
+      setGenError(null);
       setStep(3);
-      // Simulate AI Generation
-      setTimeout(() => {
-        const brand = formData.name || 'VEGA';
+
+      try {
+        const pack = await generateContentPack(systemPrompt, formData.brief);
         
-        const content: CampaignContent[] = [
-          { 
-            id: '1', 
-            type: 'tweet' as any, 
+        const mappedContent: CampaignContent[] = [
+          ...pack.tweets.map((t, i) => ({ 
+            id: `tweet-${i}-${Date.now()}`, 
+            type: 'tweet' as const, 
             platform: 'x', 
-            body: `The industry is changing. Are you ready? ${brand} is redefining market speed. Launching 2026. ✦` 
+            body: t 
+          })),
+          { 
+            id: `li-1-${Date.now()}`, 
+            type: 'linkedin' as const, 
+            platform: 'linkedin', 
+            body: pack.linkedin 
           },
           { 
-            id: '2', 
-            type: 'linkedin' as any, 
-            platform: 'linkedin', 
-            body: `Most brands scale linearly. We scale exponentially. ${brand} is the next evolution in our mission. Read our manifesto on why the old rules no longer apply.` 
+            id: `reel-1-${Date.now()}`, 
+            type: 'reel' as const, 
+            platform: 'tiktok', 
+            body: `HOOK: ${pack.reelScript.hook}\n\nBODY: ${pack.reelScript.body}\n\nCTA: ${pack.reelScript.cta}` 
+          },
+          { 
+            id: `meme-1-${Date.now()}`, 
+            type: 'meme' as const, 
+            platform: 'all', 
+            body: `TOP: ${pack.memeCopy.topText}\n\nBOTTOM: ${pack.memeCopy.bottomText}` 
+          },
+          { 
+            id: `email-1-${Date.now()}`, 
+            type: 'email' as const, 
+            platform: 'all', 
+            body: pack.email.body, 
+            subject: pack.email.subject 
           },
         ];
 
-        // Based on counts
-        for (let i = 1; i <= formData.imageCount; i++) {
-          const insPrompts = formData.inspirations.map(ins => ins.prompt).join(' | ');
-          content.push({
-            id: `img-${i}`,
-            type: 'image' as any,
-            platform: 'all',
-            body: `VISUAL ${i}: [${formData.visualStyles.join(' + ') || 'CLEAN & MINIMAL'}]. ${insPrompts ? `DNA FUSED: ${insPrompts}. ` : ''}${formData.visualExtra || 'High contrast focus.'}`
-          });
+        // Save to Firestore: users/{uid}/campaigns/{auto-id}
+        if (auth.currentUser) {
+          try {
+            await addDoc(collection(db, "users", auth.currentUser.uid, "campaigns"), {
+              contentPack: pack,
+              createdAt: serverTimestamp(),
+              campaignInput: formData.brief
+            });
+          } catch (fsErr) {
+            console.error("Firestore Save Error:", fsErr);
+          }
         }
 
-        for (let i = 1; i <= formData.videoCount; i++) {
-          content.push({
-            id: `vid-${i}`,
-            type: 'reel' as any,
-            platform: 'tiktok',
-            body: `[SCENE: FAST LIGHT TRAILS]\n\nVO: "In a world of noise, clarity is king."\n\nTEXT OVERLAY: ${brand.toUpperCase()} IS HERE.\n\nEnergy: ${formData.videoVibe || 'Cinematic'}.`
-          });
-        }
-
-        setGeneratedContent(content);
+        setGeneratedContent(mappedContent);
         setStep(4);
-      }, 3000);
+      } catch (err: any) {
+        console.error("Generation Error:", err);
+        setGenError(err.message || "Failed to generate content.");
+        setStep(2);
+      } finally {
+        setIsGenerating(false);
+      }
     } else if (step === 4) {
       handleAutoSchedule();
       setStep(5);
@@ -1558,10 +1633,20 @@ function NewCampaignFlow({ onCancel, onComplete, setView, gallery }: { onCancel:
 
                 <div className="flex justify-between items-center pt-12">
                   <button onClick={() => setStep(1)} className="text-[10px] font-bold uppercase tracking-widest hover:text-burnt">Back to Brief</button>
-                  <button onClick={nextStep} className="bg-deep-red text-ivory px-12 py-6 font-bold uppercase text-sm tracking-[0.3em] hover:bg-black transition-all shadow-hard">
-                    BUILD CONTENT
+                  <button 
+                    onClick={nextStep} 
+                    disabled={isGenerating}
+                    className={`bg-deep-red text-ivory px-12 py-6 font-bold uppercase text-sm tracking-[0.3em] transition-all shadow-hard ${isGenerating ? 'opacity-50 cursor-not-allowed' : 'hover:bg-black'}`}
+                  >
+                    {isGenerating ? 'VEGA IS THINKING...' : 'BUILD CONTENT'}
                   </button>
                 </div>
+                {genError && (
+                  <div className="mt-6 p-4 border-2 border-deep-red bg-deep-red/5 flex items-center gap-3 text-[10px] font-bold uppercase tracking-widest text-deep-red">
+                    <AlertCircle size={16} />
+                    {genError}
+                  </div>
+                )}
               </motion.div>
             )}
 
@@ -2077,16 +2162,26 @@ function CampaignDetailView({ campaign, onBack }: { campaign: Campaign, onBack: 
 function CampaignsPage({ 
   campaigns, 
   onNewCampaign,
-  onUpdateCampaigns 
+  onUpdateCampaigns,
+  isLoading
 }: { 
   campaigns: Campaign[], 
   onNewCampaign: () => void,
-  onUpdateCampaigns: (c: Campaign[]) => void
+  onUpdateCampaigns: (c: Campaign[]) => void,
+  isLoading?: boolean
 }) {
   const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'COMPLETED' | 'DRAFT' | 'ARCHIVED'>('ALL');
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+
+  if (isLoading) {
+    return (
+      <div className="py-32 border-4 border-black border-dashed flex items-center justify-center">
+        <RefreshCcw size={48} className="animate-spin text-black opacity-10" />
+      </div>
+    );
+  }
 
   const filteredCampaigns = campaigns.filter(c => {
     if (filter === 'ALL') return true;
@@ -2545,9 +2640,17 @@ function AssetDeleteModal({ onConfirm, onCancel }: { onConfirm: () => void, onCa
   );
 }
 
-function AnalyticsPage({ campaigns }: { campaigns: Campaign[] }) {
+function AnalyticsPage({ campaigns, isLoading }: { campaigns: Campaign[], isLoading?: boolean }) {
   const [dateRange, setDateRange] = useState('LAST 7 DAYS');
   
+  if (isLoading) {
+    return (
+      <div className="py-32 border-4 border-black border-dashed flex items-center justify-center">
+        <RefreshCcw size={48} className="animate-spin text-black opacity-10" />
+      </div>
+    );
+  }
+
   const stats = useMemo(() => {
     // Generate numbers based on dateRange selected
     const mult = dateRange === 'LAST 7 DAYS' ? 1 : dateRange === 'LAST 30 DAYS' ? 4 : 45;
@@ -3505,11 +3608,60 @@ function DashboardPlaceholder({
   onNewCampaign: () => void;
   onLogout: () => void;
 }) {
+  const [isFetching, setIsFetching] = useState(false);
   const [activeTab, setActiveTab] = useState('Dashboard');
   const [labDirection, setLabDirection] = useState('');
   const [labResult, setLabResult] = useState<string | null>(null);
   const [isGeneratingLab, setIsGeneratingLab] = useState(false);
   const [showToast, setShowToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+
+  useEffect(() => {
+    async function fetchCampaigns() {
+      if (!auth.currentUser) return;
+      
+      setIsFetching(true);
+      try {
+        const q = query(
+          collection(db, "users", auth.currentUser.uid, "campaigns"),
+          orderBy("createdAt", "desc")
+        );
+        const querySnapshot = await getDocs(q);
+        const fetchedCampaigns: Campaign[] = querySnapshot.docs.map(doc => {
+          const data = doc.data();
+          const pack = data.contentPack;
+          const content: CampaignContent[] = [];
+          
+          if (pack) {
+            if (pack.tweets) pack.tweets.forEach((t: string, i: number) => content.push({ id: `t-${i}-${doc.id}`, type: 'tweet', platform: 'x', body: t }));
+            if (pack.linkedin) content.push({ id: `li-${doc.id}`, type: 'linkedin', platform: 'linkedin', body: pack.linkedin });
+            if (pack.reelScript) content.push({ id: `reel-${doc.id}`, type: 'reel', platform: 'tiktok', body: `HOOK: ${pack.reelScript.hook}\n\nBODY: ${pack.reelScript.body}\n\nCTA: ${pack.reelScript.cta}` });
+            if (pack.memeCopy) content.push({ id: `meme-${doc.id}`, type: 'meme', platform: 'all', body: `TOP: ${pack.memeCopy.topText}\n\nBOTTOM: ${pack.memeCopy.bottomText}` });
+            if (pack.email) content.push({ id: `email-${doc.id}`, type: 'email', platform: 'all', body: pack.email.body, subject: pack.email.subject });
+          }
+
+          return {
+            id: doc.id,
+            name: data.campaignInput?.substring(0, 30).toUpperCase() || "UNTITLED CAMPAIGN",
+            platforms: ['x', 'linkedin', 'tiktok', 'email'],
+            status: 'active',
+            progress: 100,
+            contentCount: content.length,
+            duration: '1',
+            createdAt: data.createdAt?.toDate().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).toUpperCase() || 'RECENT',
+            brief: data.campaignInput || '',
+            content: content
+          };
+        });
+        setCampaigns(fetchedCampaigns);
+      } catch (err) {
+        console.error("Error fetching campaigns:", err);
+      } finally {
+        setIsFetching(false);
+      }
+    }
+
+    fetchCampaigns();
+  }, [auth.currentUser, setCampaigns]);
 
   useEffect(() => {
     if (showToast) {
@@ -3617,7 +3769,11 @@ function DashboardPlaceholder({
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 text-left">
               <div className="lg:col-span-2 space-y-8">
-                {campaigns.length === 0 ? (
+                {isFetching ? (
+                  <div className="bg-ivory border-2 border-black p-12 shadow-hard h-[500px] flex items-center justify-center">
+                     <RefreshCcw size={40} className="animate-spin text-black opacity-20" />
+                  </div>
+                ) : campaigns.length === 0 ? (
                   <div className="bg-ivory border-2 border-black p-12 shadow-hard h-[500px] flex flex-col items-center justify-center text-center">
                      <div className="w-20 h-20 bg-amber border-2 border-black shadow-[4px_4px_0px_#000] flex items-center justify-center mb-8 rotate-12">
                        <Send className="text-black" />
@@ -3698,6 +3854,7 @@ function DashboardPlaceholder({
             campaigns={campaigns} 
             onNewCampaign={onNewCampaign} 
             onUpdateCampaigns={setCampaigns}
+            isLoading={isFetching}
           />
         )}
 
@@ -3720,6 +3877,7 @@ function DashboardPlaceholder({
         {activeTab === 'Analytics' && (
           <AnalyticsPage 
             campaigns={campaigns}
+            isLoading={isFetching}
           />
         )}
 

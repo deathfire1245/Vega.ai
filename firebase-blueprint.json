@@ -11,12 +11,44 @@
         "createdAt": { "type": "string", "format": "date-time", "description": "When the user was created." }
       },
       "required": ["userId", "email", "createdAt"]
+    },
+    "BrandBrain": {
+      "title": "BrandBrain",
+      "description": "Information about the brand's identity and voice.",
+      "type": "object",
+      "properties": {
+        "brandName": { "type": "string" },
+        "brandDescription": { "type": "string" },
+        "tone": { "type": "array", "items": { "type": "string" } },
+        "targetAudience": { "type": "string" },
+        "contentPillars": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["brandName", "brandDescription", "tone", "targetAudience", "contentPillars"]
+    },
+    "Campaign": {
+      "title": "Campaign",
+      "description": "A generated marketing campaign.",
+      "type": "object",
+      "properties": {
+        "contentPack": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "campaignInput": { "type": "string" }
+      },
+      "required": ["contentPack", "createdAt", "campaignInput"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": "User",
       "description": "User profile records."
+    },
+    "/users/{userId}/brandBrain/current": {
+      "schema": "BrandBrain",
+      "description": "Detailed brand strategy data."
+    },
+    "/users/{userId}/campaigns/{campaignId}": {
+      "schema": "Campaign",
+      "description": "Individual campaigns created by the user."
     }
   }
 }
