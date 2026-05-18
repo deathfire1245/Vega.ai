@@ -1,115 +1,41 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 0. Default Deny
+    // 0. Global Safety Net
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Phase 3: Global Helpers
-    function isSignedIn() {
-      return request.auth != null;
+    // Phase 3: Primitive Definitions
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
     }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
 
-    function isVerified() {
-      return isSignedIn() && request.auth.token.email_verified == true;
-    }
-
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    function isOwnerVerified(userId) {
-      return isVerified() && request.auth.uid == userId;
-    }
-
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
-    function incoming() {
-      return request.resource.data;
-    }
-
-    function existing() {
-      return resource.data;
-    }
-
-    // Profile Validation
-    function isValidUserProfile(data) {
-      return data.keys().hasAll(['email', 'createdAt']) &&
-             data.email is string && data.email.size() <= 100 &&
+    // Pillar 2: Validation Blueprints
+    function isValidUser(data) {
+      return data.keys().hasAll(['userId', 'email', 'createdAt']) && 
+             data.keys().size() == 4 && // userId, email, displayName, createdAt
+             data.userId is string && data.userId.size() <= 128 &&
+             data.email is string && data.email.size() <= 256 &&
              data.createdAt is timestamp &&
-             (data.get('updatedAt', null) == null || data.updatedAt is timestamp) &&
-             (data.get('displayName', null) == null || (data.displayName is string && data.displayName.size() <= 100)) &&
-             (data.get('onboardingData', null) == null || data.onboardingData is map);
+             (data.displayName == null || (data.displayName is string && data.displayName.size() <= 256));
     }
 
-    // Campaign Validation
-    function isValidCampaign(data) {
-      return data.keys().hasAll(['userId', 'name', 'status', 'createdAt']) &&
-             data.userId == request.auth.uid &&
-             data.name is string && data.name.size() <= 200 &&
-             data.status in ['draft', 'active', 'completed', 'archived'] &&
-             data.createdAt is timestamp &&
-             (data.get('progress', null) == null || data.progress is number) &&
-             (data.get('contentCount', null) == null || data.contentCount is number) &&
-             (data.get('duration', null) == null || data.duration is string) &&
-             (data.get('brief', null) == null || (data.brief is string && data.brief.size() <= 10000)) &&
-             (data.get('content', null) == null || data.content is list);
-    }
-
-    // Asset Validation
-    function isValidAsset(data) {
-      return data.keys().hasAll(['userId', 'type', 'url', 'createdAt']) &&
-             data.userId == request.auth.uid &&
-             data.type in ['image', 'video', 'upload'] &&
-             data.url is string && data.url.size() <= 2048 &&
-             data.createdAt is timestamp &&
-             (data.get('name', null) == null || (data.name is string && data.name.size() <= 200)) &&
-             (data.get('campaign', null) == null || (data.campaign is string)) &&
-             (data.get('size', null) == null || (data.size is string)) &&
-             (data.get('date', null) == null || (data.date is string));
-    }
-
-    // 1. Users Collection
     match /users/{userId} {
       allow get: if isOwner(userId);
-      // We allow profile creation and update without verification so they can sign up and onboard,
-      // but core writes (campaigns, assets) will require it.
-      allow create: if isOwner(userId) && isValidUserProfile(incoming()) && incoming().createdAt == request.time;
-      allow update: if isOwner(userId) && isValidUserProfile(incoming()) && (
-        incoming().email == existing().email &&
-        incoming().createdAt == existing().createdAt &&
-        incoming().updatedAt == request.time &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['email', 'createdAt', 'displayName', 'onboardingData', 'updatedAt'])
-      );
-    }
-
-    // 2. Campaigns Collection
-    match /campaigns/{campaignId} {
-      allow get: if isOwner(existing().userId);
-      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isVerified() && isValidCampaign(incoming()) && incoming().createdAt == request.time;
-      allow update: if isVerified() && isOwner(existing().userId) && isValidCampaign(incoming()) && (
-        incoming().userId == existing().userId &&
-        incoming().createdAt == existing().createdAt &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'platforms', 'status', 'progress', 'contentCount', 'duration', 'brief', 'content', 'updatedAt'])
-      );
-      allow delete: if isVerified() && isOwner(existing().userId);
-    }
-
-    // 3. Assets Collection
-    match /assets/{assetId} {
-      allow get: if isOwner(existing().userId);
-      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create: if isVerified() && isValidAsset(incoming()) && incoming().createdAt == request.time;
-      allow update: if isVerified() && isOwner(existing().userId) && isValidAsset(incoming()) && (
-        incoming().userId == existing().userId &&
-        incoming().createdAt == existing().createdAt &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'campaign', 'date', 'url', 'format', 'style', 'size', 'updatedAt'])
-      );
-      allow delete: if isVerified() && isOwner(existing().userId);
+      allow create: if isOwner(userId) && 
+                      isValidId(userId) && 
+                      isValidUser(incoming()) && 
+                      incoming().userId == userId &&
+                      incoming().createdAt == request.time;
+      allow update: if isOwner(userId) && 
+                      isValidUser(incoming()) &&
+                      incoming().userId == existing().userId &&
+                      incoming().createdAt == existing().createdAt;
     }
   }
 }

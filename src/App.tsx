@@ -12,22 +12,23 @@ import {
   RefreshCcw, GripVertical, AlertCircle, Zap, Lock as LockIcon,
   MoreVertical, Trash2, Archive, ArrowLeft, MoreHorizontal,
   Play, Search, File, PanelTop, Library, TrendingUp, TrendingDown,
-  Bell, User as UserIcon, ShieldAlert, CheckCircle2, CreditCard
+  Bell, User, ShieldAlert, CheckCircle2, CreditCard
 } from "lucide-react";
-import React, { useState, useEffect, FormEvent, DragEvent, useMemo, useRef } from "react";
+import { useState, useEffect, FormEvent, DragEvent, useMemo } from "react";
 import { 
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, 
   CartesianGrid, Tooltip, Legend, BarChart, Bar, Cell 
 } from 'recharts';
-import { auth, db, storage } from "./lib/firebase";
-import { onAuthStateChanged, User as FirebaseUser, signOut, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import { auth, db, handleFirestoreError, OperationType } from "./lib/firebase";
+import { useAuth } from "./context/AuthContext";
 import { 
-  collection, doc, setDoc, onSnapshot, query, where, 
-  addDoc, deleteDoc, updateDoc, getDoc, serverTimestamp,
-  orderBy
-} from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
-import { handleFirestoreError, OperationType } from "./lib/firebaseUtils";
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  signOut,
+  GoogleAuthProvider,
+  signInWithPopup
+} from "firebase/auth";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 
 type AppView = 'landing' | 'auth' | 'onboarding' | 'dashboard' | 'new-campaign';
 const tier = 'creator';
@@ -152,183 +153,44 @@ const MOCK_CAMPAIGNS: Campaign[] = [
 ];
 
 export default function App() {
-  const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { user, loading } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [view, setView] = useState<AppView>('landing');
   const [authMode, setAuthMode] = useState<'signup' | 'login'>('signup');
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [assets, setAssets] = useState<Asset[]>([]);
+  const [campaigns, setCampaigns] = useState<Campaign[]>(MOCK_CAMPAIGNS);
+  const [assets, setAssets] = useState<Asset[]>(MOCK_ASSETS);
   const [gallery, setGallery] = useState<GalleryItem[]>(MOCK_GALLERY);
   const [remixesToday, setRemixesToday] = useState(0);
-  const [userProfile, setUserProfile] = useState<any>(null);
+  const [onboardingData, setOnboardingData] = useState<any>(null);
 
-  // Auth Listener
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      try {
-        setUser(currentUser);
-        if (currentUser) {
-          // Fetch profile
-          const profileRef = doc(db, 'users', currentUser.uid);
-          const profileSnap = await getDoc(profileRef);
-          
-          if (profileSnap.exists()) {
-            const data = profileSnap.data();
-            setUserProfile(data);
-            if (data.onboardingData) {
-              setView('dashboard');
-            } else {
-              setView('onboarding');
-            }
-          } else {
-            // Document might not exist if they haven't finished signup flow
-            setUserProfile({ email: currentUser.email, createdAt: new Date() });
-            setView('onboarding');
-          }
-        } else {
-          setView('landing');
-          setUserProfile(null);
-          setCampaigns([]);
-          setAssets([]);
+    if (!loading) {
+      if (user) {
+        // If logged in but on landing/auth, go to dashboard
+        if (view === 'landing' || view === 'auth') {
+          setView('dashboard');
         }
-      } catch (error) {
-        console.error("Auth listener error:", error);
-        // Fallback to avoid getting stuck
-        if (currentUser) {
-          setView('onboarding');
-        } else {
+      } else {
+        // If logged out but on protected views, go to landing
+        if (view === 'onboarding' || view === 'dashboard' || view === 'new-campaign') {
           setView('landing');
         }
-      } finally {
-        setLoading(false);
       }
-    });
-    return () => unsubscribe();
-  }, []);
-
-  // Firestore Listeners
-  useEffect(() => {
-    if (!user) return;
-
-    const campaignsQuery = query(
-      collection(db, 'campaigns'),
-      where('userId', '==', user.uid),
-      orderBy('createdAt', 'desc')
-    );
-
-    const assetsQuery = query(
-      collection(db, 'assets'),
-      where('userId', '==', user.uid),
-      orderBy('date', 'desc')
-    );
-
-    const unsubCampaigns = onSnapshot(campaignsQuery, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Campaign));
-      setCampaigns(data);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'campaigns');
-    });
-
-    const unsubAssets = onSnapshot(assetsQuery, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Asset));
-      setAssets(data);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'assets');
-    });
-
-    return () => {
-      unsubCampaigns();
-      unsubAssets();
-    };
-  }, [user]);
-
-  const handleLogout = async () => {
-    await signOut(auth);
-    setUser(null);
-    setUserProfile(null);
-    setView('landing');
-  };
-
-  const isEmailUnverified = user && !user.emailVerified;
+    }
+  }, [user, loading, view]);
 
   const handleAuthSuccess = (mode: 'signup' | 'login') => {
-    // Proactively set loading while onAuthStateChanged triggers
-    if (auth.currentUser) {
-      setLoading(true);
-      // The onAuthStateChanged listener above will handle the actual data fetch and redirection
-    }
-  };
-
-  const deleteCampaign = async (id: string) => {
-    try {
-      await deleteDoc(doc(db, 'campaigns', id));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `campaigns/${id}`);
-    }
-  };
-
-  const archiveCampaign = async (id: string) => {
-    try {
-      await updateDoc(doc(db, 'campaigns', id), {
-        status: 'archived',
-        updatedAt: serverTimestamp()
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `campaigns/${id}`);
-    }
-  };
-
-  const uploadAsset = async (file: File) => {
-    if (!user) return;
-    try {
-      const storageRef = ref(storage, `users/${user.uid}/assets/${Date.now()}_${file.name}`);
-      const snapshot = await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(snapshot.ref);
-      
-      await addDoc(collection(db, 'assets'), {
-        userId: user.uid,
-        name: file.name,
-        type: file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'upload',
-        url,
-        size: `${(file.size / (1024 * 1024)).toFixed(2)}MB`,
-        date: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).toUpperCase(),
-        createdAt: serverTimestamp()
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'assets');
-    }
-  };
-
-  const deleteAsset = async (id: string, storageUrl?: string) => {
-    try {
-      await deleteDoc(doc(db, 'assets', id));
-      if (storageUrl && storageUrl.includes('firebasestorage.googleapis.com')) {
-        // Optional: Implement storage cleanup if needed
-      }
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `assets/${id}`);
-    }
-  };
-
-  const addCampaign = async (campaignData: Partial<Campaign>) => {
-    if (!user) return;
-    try {
-      const { id, ...rest } = campaignData as any;
-      await addDoc(collection(db, 'campaigns'), {
-        ...rest,
-        userId: user.uid,
-        createdAt: serverTimestamp()
-      });
+    if (mode === 'signup') {
+      setView('onboarding');
+    } else {
       setView('dashboard');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'campaigns');
     }
   };
 
-  if (loading) {
-    return <LoadingScreen />;
-  }
+  const addCampaign = (campaign: Campaign) => {
+    setCampaigns(prev => [campaign, ...prev]);
+    setView('dashboard');
+  };
 
   if (view === 'auth') {
     return (
@@ -343,9 +205,8 @@ export default function App() {
   if (view === 'onboarding') {
     return (
       <OnboardingFlow 
-        userProfile={userProfile}
         onComplete={(data) => {
-          setUserProfile((prev: any) => ({ ...prev, onboardingData: data }));
+          setOnboardingData(data);
           setView('dashboard');
         }} 
         onBack={() => setView('auth')} 
@@ -368,20 +229,20 @@ export default function App() {
     return (
       <DashboardPlaceholder 
         campaigns={campaigns}
-        onDeleteCampaign={deleteCampaign}
-        onArchiveCampaign={archiveCampaign}
+        setCampaigns={setCampaigns}
         assets={assets}
-        onUploadAsset={uploadAsset}
-        onDeleteAsset={deleteAsset}
+        setAssets={setAssets}
         gallery={gallery}
         setGallery={setGallery}
         remixesToday={remixesToday}
         setRemixesToday={setRemixesToday}
-        userProfile={userProfile}
-        setUserProfile={setUserProfile}
+        onboardingData={onboardingData}
+        setOnboardingData={setOnboardingData}
         onNewCampaign={() => setView('new-campaign')}
-        onLogout={handleLogout} 
-        firebaseUser={user}
+        onLogout={async () => {
+          await signOut(auth);
+          setView('landing');
+        }} 
       />
     );
   }
@@ -705,61 +566,76 @@ export default function App() {
   );
 }
 
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
-
 function SignUpView({ onBack, onSuccess, initialMode = 'signup' }: { onBack: () => void, onSuccess: (mode: 'signup' | 'login') => void, initialMode?: 'signup' | 'login' }) {
   const [viewMode, setViewMode] = useState<'signup' | 'login'>(initialMode);
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [isAuthLoading, setIsAuthLoading] = useState(false);
-
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setIsAuthLoading(true);
-    try {
-      if (viewMode === 'signup') {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        // User profile will be created during onboarding or here
-        await setDoc(doc(db, 'users', userCredential.user.uid), {
-          email: userCredential.user.email,
-          createdAt: serverTimestamp(),
-        });
-      } else {
-        await signInWithEmailAndPassword(auth, email, password);
-      }
-      onSuccess(viewMode);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setIsAuthLoading(false);
-    }
-  };
+  const [fullName, setFullName] = useState('');
+  const [brandName, setBrandName] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleGoogleLogin = async () => {
-    setError('');
-    setIsAuthLoading(true);
+    const provider = new GoogleAuthProvider();
     try {
-      const provider = new GoogleAuthProvider();
+      setIsSubmitting(true);
+      setError(null);
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
       
-      // Check if profile exists
-      const profileSnap = await getDoc(doc(db, 'users', user.uid));
-      if (!profileSnap.exists()) {
+      // Store user in Firestore if new
+      try {
         await setDoc(doc(db, 'users', user.uid), {
+          userId: user.uid,
           email: user.email,
-          displayName: user.displayName,
+          displayName: user.displayName || '',
           createdAt: serverTimestamp(),
-        });
+        }, { merge: true });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}`);
       }
-      onSuccess(viewMode);
+
+      onSuccess('login');
     } catch (err: any) {
       setError(err.message);
     } finally {
-      setIsAuthLoading(false);
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setIsSubmitting(true);
+
+    try {
+      if (viewMode === 'signup') {
+        const result = await createUserWithEmailAndPassword(auth, email, password);
+        const user = result.user;
+
+        // Store user in Firestore
+        try {
+          await setDoc(doc(db, 'users', user.uid), {
+            userId: user.uid,
+            email: user.email,
+            displayName: fullName || '',
+            brandName: brandName || '',
+            createdAt: serverTimestamp(),
+          });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}`);
+        }
+        
+        onSuccess('signup');
+      } else {
+        await signInWithEmailAndPassword(auth, email, password);
+        onSuccess('login');
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -792,28 +668,55 @@ function SignUpView({ onBack, onSuccess, initialMode = 'signup' }: { onBack: () 
       <main className="flex-grow pt-20 flex flex-col lg:flex-row">
         {/* LEFT: FORM */}
         <div className="lg:w-1/2 p-6 md:p-20 flex flex-col justify-center border-r-2 border-black">
-          <div className="max-w-md w-full mx-auto">
+          <div className="max-w-md w-full mx-auto text-left">
             <h1 className="text-6xl md:text-8xl font-display mb-12 tracking-tighter">
               {viewMode === 'signup' ? 'CREATE ACCOUNT' : 'WELCOME BACK'}
             </h1>
             
+            {error && (
+              <div className="bg-deep-red/10 border-2 border-deep-red p-4 mb-8 text-deep-red font-bold uppercase text-[10px] tracking-widest flex items-center gap-3">
+                <AlertCircle size={16} /> {error}
+              </div>
+            )}
+
             <form className="space-y-8" onSubmit={handleSubmit}>
-              {error && (
-                <div className="bg-deep-red/10 border-2 border-deep-red p-4 flex items-center gap-3 text-deep-red font-bold text-xs">
-                  <AlertCircle size={16} />
-                  {error.toUpperCase()}
-                </div>
+              {viewMode === 'signup' && (
+                <>
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-widest mb-3 opacity-60">Full Name</label>
+                    <input 
+                      type="text" 
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="MAX MUSTERMANN"
+                      className="w-full bg-ivory border-2 border-black p-5 font-bold uppercase text-sm tracking-widest focus:bg-white focus:outline-none shadow-hard"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-widest mb-3 opacity-60">Brand name</label>
+                    <input 
+                      type="text" 
+                      value={brandName}
+                      onChange={(e) => setBrandName(e.target.value)}
+                      placeholder="VEGA WORKS"
+                      className="w-full bg-ivory border-2 border-black p-5 font-bold uppercase text-sm tracking-widest focus:bg-white focus:outline-none shadow-hard"
+                      required
+                    />
+                  </div>
+                </>
               )}
 
               <div>
                 <label className="block text-xs font-bold uppercase tracking-widest mb-3 opacity-60">Work Email</label>
                 <input 
                   type="email" 
-                  required
-                  placeholder="YOU@BRAND.COM"
                   value={email}
-                  onChange={e => setEmail(e.target.value)}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="YOU@BRAND.COM"
                   className="w-full bg-ivory border-2 border-black p-5 font-bold uppercase text-sm tracking-widest focus:bg-white focus:outline-none shadow-hard"
+                  required
                 />
               </div>
 
@@ -822,11 +725,11 @@ function SignUpView({ onBack, onSuccess, initialMode = 'signup' }: { onBack: () 
                 <div className="relative">
                   <input 
                     type={showPassword ? "text" : "password"} 
-                    required
-                    placeholder="••••••••"
                     value={password}
-                    onChange={e => setPassword(e.target.value)}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
                     className="w-full bg-ivory border-2 border-black p-5 font-bold uppercase text-sm tracking-widest focus:bg-white focus:outline-none shadow-hard"
+                    required
                   />
                   <button 
                     type="button"
@@ -840,19 +743,20 @@ function SignUpView({ onBack, onSuccess, initialMode = 'signup' }: { onBack: () 
 
               <div className="pt-6 space-y-4">
                 <button 
-                  disabled={isAuthLoading}
-                  className="w-full bg-deep-red text-ivory py-6 font-bold uppercase text-sm tracking-[0.3em] hover:bg-black transition-all shadow-hard-lg disabled:opacity-50"
+                  type="submit"
+                  disabled={isSubmitting}
+                  className={`w-full py-6 font-bold uppercase text-sm tracking-[0.3em] transition-all shadow-hard-lg ${isSubmitting ? 'bg-black/20 cursor-not-allowed' : 'bg-deep-red text-ivory hover:bg-black'}`}
                 >
-                  {isAuthLoading ? 'PROCESSING...' : (viewMode === 'signup' ? 'START BUILDING' : 'LOGIN TO VEGA')}
+                  {isSubmitting ? 'PROCESSING...' : (viewMode === 'signup' ? 'START BUILDING' : 'LOGIN TO VEGA')}
                 </button>
-                
+
                 <button 
                   type="button"
                   onClick={handleGoogleLogin}
-                  disabled={isAuthLoading}
-                  className="w-full border-2 border-black bg-white text-black py-6 font-bold uppercase text-sm tracking-[0.3em] hover:bg-black hover:text-white transition-all shadow-hard flex items-center justify-center gap-3"
+                  disabled={isSubmitting}
+                  className="w-full border-2 border-black py-6 font-bold uppercase text-sm tracking-[0.3em] hover:bg-black hover:text-ivory transition-all shadow-hard flex items-center justify-center gap-3"
                 >
-                  <Globe size={18} /> CONTINUE WITH GOOGLE
+                  <Globe size={20} /> CONTINUE WITH GOOGLE
                 </button>
               </div>
 
@@ -866,6 +770,12 @@ function SignUpView({ onBack, onSuccess, initialMode = 'signup' }: { onBack: () 
                     ? "Already have an account? Login" 
                     : "Don't have an account? Sign Up"}
                 </button>
+
+                <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-black/40 leading-relaxed">
+                  {viewMode === 'signup' 
+                    ? "By signing up, you agree to our Terms of Service and Privacy Policy. No credit card required."
+                    : "Forgot your password? Reset it here."}
+                </p>
               </div>
             </form>
           </div>
@@ -917,9 +827,8 @@ function SignUpView({ onBack, onSuccess, initialMode = 'signup' }: { onBack: () 
   );
 }
 
-function OnboardingFlow({ userProfile, onComplete, onBack }: { userProfile: any, onComplete: (data: any) => void, onBack: () => void }) {
+function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => void, onBack: () => void }) {
   const [step, setStep] = useState(1);
-  const [isSaving, setIsSaving] = useState(false);
   const [data, setData] = useState({
     brandName: '',
     tagline: '',
@@ -934,40 +843,8 @@ function OnboardingFlow({ userProfile, onComplete, onBack }: { userProfile: any,
   const nextStep = () => setStep(s => Math.min(s + 1, 6));
   const prevStep = () => setStep(s => Math.max(s - 1, 1));
   
-  const handleLaunch = async () => {
-    if (!auth.currentUser) return;
-    setIsSaving(true);
-    try {
-      // Only send fields we want to update. email and createdAt are already set at signup.
-      // Merge: true will preserve them if they exist.
-      const updateData: any = {
-        onboardingData: {
-          ...data,
-          createdAt: new Date().toISOString()
-        },
-        updatedAt: serverTimestamp()
-      };
-
-      // If we don't have a profile yet (e.g. signup failed to create doc but auth succeeded), 
-      // we should provide the missing required fields.
-      if (!userProfile?.createdAt) {
-        updateData.email = auth.currentUser.email;
-        updateData.createdAt = serverTimestamp();
-      }
-
-      await setDoc(doc(db, 'users', auth.currentUser.uid), updateData, { merge: true });
-      
-      setUserProfile((prev: any) => ({ 
-        ...prev, 
-        ...updateData,
-        onboardingData: updateData.onboardingData 
-      }));
-      onComplete(data);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${auth.currentUser.uid}`);
-    } finally {
-      setIsSaving(false);
-    }
+  const handleLaunch = () => {
+    onComplete(data);
   };
 
   const tones = [
@@ -1201,10 +1078,9 @@ function OnboardingFlow({ userProfile, onComplete, onBack }: { userProfile: any,
               </button>
               <button 
                 onClick={step === 6 ? handleLaunch : nextStep}
-                disabled={isSaving}
-                className="bg-deep-red text-ivory px-12 py-6 font-bold uppercase text-sm tracking-[0.3em] hover:bg-black transition-all shadow-hard disabled:opacity-50"
+                className="bg-deep-red text-ivory px-12 py-6 font-bold uppercase text-sm tracking-[0.3em] hover:bg-black transition-all shadow-hard"
               >
-                {isSaving ? 'LAUNCHING...' : (step === 6 ? 'LAUNCH DASHBOARD' : 'CONTINUE')}
+                {step === 6 ? 'LAUNCH DASHBOARD' : 'CONTINUE'}
               </button>
             </div>
           </motion.div>
@@ -2201,15 +2077,11 @@ function CampaignDetailView({ campaign, onBack }: { campaign: Campaign, onBack: 
 function CampaignsPage({ 
   campaigns, 
   onNewCampaign,
-  onUpdateCampaigns,
-  onDeleteCampaign,
-  onArchiveCampaign
+  onUpdateCampaigns 
 }: { 
   campaigns: Campaign[], 
   onNewCampaign: () => void,
-  onUpdateCampaigns: (c: Campaign[]) => void,
-  onDeleteCampaign: (id: string) => Promise<void>,
-  onArchiveCampaign: (id: string) => Promise<void>
+  onUpdateCampaigns: (c: Campaign[]) => void
 }) {
   const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'COMPLETED' | 'DRAFT' | 'ARCHIVED'>('ALL');
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
@@ -2221,13 +2093,13 @@ function CampaignsPage({
     return c.status.toUpperCase() === filter;
   });
 
-  const handleDelete = async (id: string) => {
-    await onDeleteCampaign(id);
+  const handleDelete = (id: string) => {
+    onUpdateCampaigns(campaigns.filter(c => c.id !== id));
     setShowDeleteModal(null);
   };
 
-  const handleArchive = async (id: string) => {
-    await onArchiveCampaign(id);
+  const handleArchive = (id: string) => {
+    onUpdateCampaigns(campaigns.map(c => c.id === id ? { ...c, status: 'archived' } : c));
     setMenuOpenId(null);
   };
 
@@ -2383,12 +2255,10 @@ function CampaignsPage({
 
 function AssetsPage({ 
   assets, 
-  onUpload,
-  onDelete
+  onUpdateAssets 
 }: { 
   assets: Asset[], 
-  onUpload: (file: File) => void,
-  onDelete: (id: string, url?: string) => void
+  onUpdateAssets: (a: Asset[]) => void 
 }) {
   const [filter, setFilter] = useState<'ALL' | 'IMAGES' | 'VIDEOS' | 'UPLOADS'>('ALL');
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -2405,8 +2275,7 @@ function AssetsPage({
   });
 
   const handleDelete = (id: string) => {
-    const asset = assets.find(a => a.id === id);
-    onDelete(id, asset?.url);
+    onUpdateAssets(assets.filter(a => a.id !== id));
     setShowDeleteModal(null);
   };
 
@@ -2415,10 +2284,11 @@ function AssetsPage({
     setTimeout(() => setIsDownloading(null), 1500);
   };
 
-  const handleUpload = async (file: File) => {
-    await onUpload(file);
+  const handleUpload = (newAsset: Asset) => {
+    onUpdateAssets([newAsset, ...assets]);
     setShowUploadModal(false);
   };
+
 
   return (
     <div className="space-y-12">
@@ -2576,43 +2446,33 @@ function AssetsPage({
   );
 }
 
-function UploadModal({ onUpload, onCancel }: { onUpload: (file: File) => Promise<void>, onCancel: () => void }) {
+function UploadModal({ onUpload, onCancel }: { onUpload: (a: Asset) => void, onCancel: () => void }) {
   const [dragActive, setDragActive] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFile = async (file: File) => {
-    setIsUploading(true);
-    try {
-      await onUpload(file);
-      onCancel();
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = (e: DragEvent) => {
     e.preventDefault();
     setDragActive(false);
-    if (e.dataTransfer.files?.[0]) {
-      handleFile(e.dataTransfer.files[0]);
-    }
+    simulateUpload();
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) {
-      handleFile(e.target.files[0]);
-    }
+  const simulateUpload = () => {
+    setIsUploading(true);
+    setTimeout(() => {
+      onUpload({
+        id: Math.random().toString(36).substr(2, 9),
+        type: 'upload',
+        name: 'NEW_BRAND_ASSET_' + Math.floor(Math.random() * 100),
+        date: 'JUN 01 2026',
+        url: 'bg-ivory',
+        size: '1.2MB'
+      });
+      setIsUploading(false);
+    }, 2000);
   };
 
   return (
     <div className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-6 backdrop-blur-md">
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        onChange={handleFileChange} 
-        className="hidden" 
-      />
       <motion.div 
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
@@ -2627,7 +2487,7 @@ function UploadModal({ onUpload, onCancel }: { onUpload: (file: File) => Promise
           onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
           onDragLeave={() => setDragActive(false)}
           onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
+          onClick={simulateUpload}
           className={`border-4 border-dashed border-black/10 py-24 flex flex-col items-center justify-center cursor-pointer transition-all ${dragActive ? 'bg-amber/10 border-black/40 scale-[0.98]' : 'hover:bg-black/5'}`}
         >
           {isUploading ? (
@@ -2972,7 +2832,7 @@ function SettingsPage({
       <div className="w-full lg:w-64 shrink-0 space-y-2">
         {[
           { id: 'BRAIN', label: 'BRAND BRAIN', icon: Sparkles },
-          { id: 'ACCOUNT', label: 'ACCOUNT', icon: UserIcon },
+          { id: 'ACCOUNT', label: 'ACCOUNT', icon: User },
           { id: 'PLATFORMS', label: 'PLATFORMS', icon: Zap },
           { id: 'NOTIFICATIONS', label: 'NOTIFICATIONS', icon: Bell },
           { id: 'DANGER', label: 'DANGER ZONE', icon: ShieldAlert, color: 'text-deep-red' },
@@ -3620,57 +3480,36 @@ function ViewPromptModal({ prompt, onClose }: { prompt: string, onClose: () => v
 
 function DashboardPlaceholder({ 
   campaigns, 
-  onDeleteCampaign,
-  onArchiveCampaign,
+  setCampaigns,
   assets,
-  onUploadAsset,
-  onDeleteAsset,
+  setAssets,
   gallery,
   setGallery,
   remixesToday,
   setRemixesToday,
-  userProfile,
-  setUserProfile,
+  onboardingData, 
+  setOnboardingData,
   onNewCampaign, 
-  onLogout,
-  firebaseUser
+  onLogout 
 }: { 
   campaigns: Campaign[];
-  onDeleteCampaign: (id: string) => Promise<void>;
-  onArchiveCampaign: (id: string) => Promise<void>;
+  setCampaigns: (c: Campaign[] | ((prev: Campaign[]) => Campaign[])) => void;
   assets: Asset[];
-  onUploadAsset: (file: File) => Promise<void>;
-  onDeleteAsset: (id: string, url?: string) => Promise<void>;
+  setAssets: (a: Asset[] | ((prev: Asset[]) => Asset[])) => void;
   gallery: GalleryItem[];
   setGallery: (g: GalleryItem[] | ((prev: GalleryItem[]) => GalleryItem[])) => void;
   remixesToday: number;
   setRemixesToday: (n: number | ((prev: number) => number)) => void;
-  userProfile: any;
-  setUserProfile: (d: any) => void;
+  onboardingData: any;
+  setOnboardingData: (d: any) => void;
   onNewCampaign: () => void;
   onLogout: () => void;
-  firebaseUser: FirebaseUser | null;
 }) {
   const [activeTab, setActiveTab] = useState('Dashboard');
   const [labDirection, setLabDirection] = useState('');
   const [labResult, setLabResult] = useState<string | null>(null);
   const [isGeneratingLab, setIsGeneratingLab] = useState(false);
   const [showToast, setShowToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
-
-  const onboardingData = userProfile?.onboardingData;
-
-  const handleUpdateUserProfile = async (newData: any) => {
-    if (!auth.currentUser) return;
-    try {
-      await setDoc(doc(db, 'users', auth.currentUser.uid), {
-        onboardingData: newData,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
-      setUserProfile((prev: any) => ({ ...prev, onboardingData: newData }));
-    } catch (error) {
-       handleFirestoreError(error, OperationType.UPDATE, `users/${auth.currentUser.uid}`);
-    }
-  };
 
   useEffect(() => {
     if (showToast) {
@@ -3718,18 +3557,7 @@ function DashboardPlaceholder({
             </button>
           ))}
         </nav>
-        <div className="p-6 border-t border-black/10 space-y-4">
-          {firebaseUser && !firebaseUser.emailVerified && (
-            <div className="bg-deep-red/10 border-2 border-deep-red p-4 space-y-2">
-              <div className="flex items-center gap-2 text-deep-red">
-                <ShieldAlert size={14} />
-                <span className="text-[10px] font-bold uppercase tracking-widest">Verify Email</span>
-              </div>
-              <p className="text-[8px] font-bold uppercase opacity-60 leading-tight">
-                Your email is not verified. Some features may be restricted.
-              </p>
-            </div>
-          )}
+        <div className="p-6 border-t border-black/10">
           <button 
             onClick={onLogout}
             className="w-full text-left font-bold uppercase text-[10px] tracking-widest hover:text-deep-red transition-colors flex items-center gap-2"
@@ -3869,20 +3697,14 @@ function DashboardPlaceholder({
           <CampaignsPage 
             campaigns={campaigns} 
             onNewCampaign={onNewCampaign} 
-            onUpdateCampaigns={async (updatedCampaigns) => {
-               // This is a bit tricky now since we are updated individually
-               // But CampaignsPage uses handleArchive and handleDelete which call onUpdateCampaigns
-            }}
-            onDeleteCampaign={onDeleteCampaign}
-            onArchiveCampaign={onArchiveCampaign}
+            onUpdateCampaigns={setCampaigns}
           />
         )}
 
         {activeTab === 'Assets' && (
           <AssetsPage 
             assets={assets} 
-            onUpload={onUploadAsset}
-            onDelete={onDeleteAsset}
+            onUpdateAssets={setAssets} 
           />
         )}
 
@@ -3904,7 +3726,7 @@ function DashboardPlaceholder({
         {activeTab === 'Settings' && (
           <SettingsPage 
             onboardingData={onboardingData}
-            setOnboardingData={handleUpdateUserProfile}
+            setOnboardingData={setOnboardingData}
           />
         )}
 

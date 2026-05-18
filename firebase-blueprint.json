@@ -1,92 +1,22 @@
 {
   "entities": {
-    "UserProfile": {
-      "title": "User Profile",
-      "description": "Stores user branding and onboarding information.",
+    "User": {
+      "title": "User",
+      "description": "Represents a user of the application.",
       "type": "object",
       "properties": {
-        "email": { "type": "string" },
-        "displayName": { "type": "string" },
-        "onboardingData": {
-          "type": "object",
-          "properties": {
-            "brandName": { "type": "string" },
-            "tagline": { "type": "string" },
-            "description": { "type": "string" },
-            "audience": { "type": "string" },
-            "tone": { "type": "string" },
-            "platforms": { "type": "array", "items": { "type": "string" } },
-            "colors": { "type": "array", "items": { "type": "string" } },
-            "createdAt": { "type": "string", "format": "date-time" }
-          }
-        },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "userId": { "type": "string", "description": "The unique ID of the user." },
+        "email": { "type": "string", "description": "The email address of the user." },
+        "displayName": { "type": "string", "description": "The display name of the user." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the user was created." }
       },
-      "required": ["email"]
-    },
-    "Campaign": {
-      "title": "Campaign",
-      "description": "A content campaign consisting of multiple assets and text posts.",
-      "type": "object",
-      "properties": {
-        "userId": { "type": "string" },
-        "name": { "type": "string" },
-        "platforms": { "type": "array", "items": { "type": "string" } },
-        "status": { "type": "string", "enum": ["draft", "active", "completed", "archived"] },
-        "progress": { "type": "number" },
-        "contentCount": { "type": "number" },
-        "duration": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "brief": { "type": "string" },
-        "content": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "id": { "type": "string" },
-              "type": { "type": "string" },
-              "platform": { "type": "string" },
-              "body": { "type": "string" },
-              "subject": { "type": "string" },
-              "scheduledAt": { "type": "string" }
-            }
-          }
-        }
-      },
-      "required": ["userId", "name", "status"]
-    },
-    "Asset": {
-      "title": "Asset",
-      "description": "A generated or uploaded visual asset.",
-      "type": "object",
-      "properties": {
-        "userId": { "type": "string" },
-        "id": { "type": "string" },
-        "type": { "type": "string", "enum": ["image", "video", "upload"] },
-        "name": { "type": "string" },
-        "campaign": { "type": "string" },
-        "date": { "type": "string", "format": "date-time" },
-        "url": { "type": "string" },
-        "format": { "type": "string" },
-        "style": { "type": "string" },
-        "size": { "type": "string" }
-      },
-      "required": ["userId", "type", "url"]
+      "required": ["userId", "email", "createdAt"]
     }
   },
   "firestore": {
-    "users/{userId}": {
-      "schema": "UserProfile",
-      "description": "User profiles and branding data."
-    },
-    "campaigns/{campaignId}": {
-      "schema": "Campaign",
-      "description": "User-generated campaigns."
-    },
-    "assets/{assetId}": {
-      "schema": "Asset",
-      "description": "User files and generated assets."
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile records."
     }
   }
 }
