@@ -1,10 +1,10 @@
 {
-  "projectId": "vega-ai-bb8b1",
-  "appId": "1:332099311140:web:a13b4e87a1ca752320eab1",
-  "apiKey": "AIzaSyDxtIlhTl6ptvBsIGs-P7FpWkEJBVbpuus",
-  "authDomain": "vega-ai-bb8b1.firebaseapp.com",
-  "firestoreDatabaseId": "(default)",
-  "storageBucket": "vega-ai-bb8b1.firebasestorage.app",
-  "messagingSenderId": "332099311140",
+  "projectId": "kyndrx",
+  "appId": "1:164775804222:web:3ea043e6ff366d4fc2406f",
+  "apiKey": "AIzaSyCmjkuebS3lDymURYjdqvjCZdAGjd4NdMk",
+  "authDomain": "kyndrx.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-59bb7675-f81c-4ac0-8633-7f02997bc306",
+  "storageBucket": "kyndrx.firebasestorage.app",
+  "messagingSenderId": "164775804222",
   "measurementId": ""
 }

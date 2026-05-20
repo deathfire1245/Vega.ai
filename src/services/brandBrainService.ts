@@ -7,6 +7,9 @@ export interface BrandBrain {
   tone: string[];
   targetAudience: string;
   contentPillars: string[];
+  discordConnected?: boolean;
+  discordUserId?: string;
+  discordUsername?: string;
 }
 
 /**

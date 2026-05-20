@@ -28,7 +28,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup
 } from "firebase/auth";
-import { doc, setDoc, serverTimestamp, collection, addDoc, getDocs, query, orderBy } from "firebase/firestore";
+import { doc, getDoc, setDoc, serverTimestamp, collection, addDoc, getDocs, query, orderBy, limit, updateDoc } from "firebase/firestore";
 import { useBrandBrain } from "./hooks/useBrandBrain";
 import { generateContentPack } from "./services/groqService";
 
@@ -156,7 +156,7 @@ const MOCK_CAMPAIGNS: Campaign[] = [
 
 export default function App() {
   const { user, loading } = useAuth();
-  const { brandBrain, isLoading: brainLoading } = useBrandBrain();
+  const { brandBrain, isLoading: isBrandLoading, refresh: refreshBrand } = useBrandBrain();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [view, setView] = useState<AppView>('landing');
   const [authMode, setAuthMode] = useState<'signup' | 'login'>('signup');
@@ -165,41 +165,35 @@ export default function App() {
   const [gallery, setGallery] = useState<GalleryItem[]>(MOCK_GALLERY);
   const [remixesToday, setRemixesToday] = useState(0);
   const [onboardingData, setOnboardingData] = useState<any>(null);
+  const [dashboardTab, setDashboardTab] = useState('Dashboard');
 
   useEffect(() => {
-    if (!loading && !brainLoading) {
+    if (!loading && !isBrandLoading) {
       if (user) {
-        // If logged in but on landing/auth/onboarding, decide where to go
-        if (view === 'landing' || view === 'auth') {
-          if (brandBrain) {
-            setView('dashboard');
-          } else {
-            setView('onboarding');
-          }
+        if (!brandBrain && view !== 'onboarding') {
+          setView('onboarding');
+        } else if (brandBrain && (view === 'landing' || view === 'auth' || view === 'onboarding')) {
+          setView('dashboard');
         }
       } else {
-        // If logged out but on protected views, go to landing
         if (view !== 'landing' && view !== 'auth') {
           setView('landing');
         }
       }
     }
-  }, [user, loading, brainLoading, brandBrain, view]);
+  }, [user, loading, isBrandLoading, brandBrain, view]);
 
   const handleAuthSuccess = (mode: 'signup' | 'login') => {
-    if (mode === 'signup') {
+    if (mode === 'signup' || !brandBrain) {
       setView('onboarding');
     } else {
-      if (brandBrain) {
-        setView('dashboard');
-      } else {
-        setView('onboarding');
-      }
+      setView('dashboard');
     }
   };
 
   const addCampaign = (campaign: Campaign) => {
     setCampaigns(prev => [campaign, ...prev]);
+    setDashboardTab('Workstation');
     setView('dashboard');
   };
 
@@ -216,11 +210,15 @@ export default function App() {
   if (view === 'onboarding') {
     return (
       <OnboardingFlow 
-        onComplete={(data) => {
+        onComplete={async (data) => {
           setOnboardingData(data);
+          await refreshBrand();
           setView('dashboard');
         }} 
-        onBack={() => setView('auth')} 
+        onBack={async () => {
+          await signOut(auth);
+          setView('landing');
+        }} 
       />
     );
   }
@@ -253,7 +251,9 @@ export default function App() {
         onLogout={async () => {
           await signOut(auth);
           setView('landing');
-        }} 
+        }}
+        activeTab={dashboardTab}
+        setActiveTab={setDashboardTab}
       />
     );
   }
@@ -342,7 +342,7 @@ export default function App() {
               <h1 className="text-[12vw] sm:text-[10vw] lg:text-[7vw] xl:text-[8vw] leading-[0.85] font-display tracking-tighter mb-8">
                 <span className="block stagger-fade-in">ONE SENTENCE.</span>
                 <span className="block stagger-fade-in delay-100 text-deep-red">ENTIRE</span>
-                <span className="block stagger-fade-in delay-200">CAMPAIGN.</span>
+                <span className="block stagger-fade-in delay-200">WORKSPACE.</span>
               </h1>
               
               <div className="max-w-xl stagger-fade-in delay-300">
@@ -423,7 +423,7 @@ export default function App() {
                 style={{ animationDelay: '0.5s' }}
               >
                 <p className="text-sm font-bold leading-tight">
-                  ⚡ One sentence.<br/>Full campaign. Insane.
+                  ⚡ One sentence.<br/>Full workspace. Insane.
                 </p>
                 <p className="text-[10px] font-bold uppercase mt-2 opacity-60">— @techwithtj</p>
               </div>
@@ -437,27 +437,17 @@ export default function App() {
             {[...Array(4)].map((_, i) => (
               <div key={i} className="flex gap-8 items-center text-ivory font-display text-4xl uppercase tracking-widest leading-none">
                 <span className="text-amber">✦</span>
-                <span>Tweets</span>
+                <span>TWEETS</span>
                 <span className="text-amber">✦</span>
-                <span>LinkedIn</span>
+                <span>LINKEDIN</span>
                 <span className="text-amber">✦</span>
-                <span>Reel Scripts</span>
+                <span>REEL SCRIPTS</span>
                 <span className="text-amber">✦</span>
-                <span>Email Copy</span>
+                <span>EMAIL COPY</span>
                 <span className="text-amber">✦</span>
-                <span>Memes</span>
+                <span>MEMES</span>
                 <span className="text-amber">✦</span>
-                <span>Posters</span>
-                <span className="text-amber">✦</span>
-                <span>Brand Voice</span>
-                <span className="text-amber">✦</span>
-                <span>Scheduling</span>
-                <span className="text-amber">✦</span>
-                <span>Analytics</span>
-                <span className="text-amber">✦</span>
-                <span>Visual Ads</span>
-                <span className="text-amber">✦</span>
-                <span>Brand Brain</span>
+                <span>POSTERS</span>
                 <span className="text-amber">✦</span>
               </div>
             ))}
@@ -471,8 +461,8 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-3">
               {[
                 { num: "01", title: "Describe Your Product", desc: "Just one sentence. That's all we need to understand your value prop." },
-                { num: "02", title: "Vega Builds Your Campaign", desc: "Our engine generates 30+ pieces of content across all channels in seconds." },
-                { num: "03", title: "Schedule, Post, Track, Repeat", desc: "One-click deployment to all platforms with built-in performance optimization." }
+                { num: "02", title: "Vega Builds Your Workspace", desc: "Our engine generates 30+ pieces of content across all channels in seconds." },
+                { num: "03", title: "Review, Approve & Deliver", desc: "Approve completed content in one click. Receive it instantly in your Discord or Telegram." }
               ].map((step, idx) => (
                 <div key={idx} className={`py-12 ${idx !== 2 ? 'md:border-r-2 border-black' : ''} md:px-8 first:pl-0 last:pr-0 border-b-2 md:border-b-0 border-black last:border-b-0`}>
                   <span className="text-8xl font-display text-amber block mb-4">{step.num}</span>
@@ -487,13 +477,11 @@ export default function App() {
         {/* 5. FEATURES GRID */}
         <section id="features" className="py-24 px-6 max-w-[1440px] mx-auto">
           <h2 className="text-7xl font-display mb-20 tracking-tighter">FEATURES</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-0 border-t-2 border-l-2 border-black">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-0 border-t-2 border-l-2 border-black">
             {[
-              { title: "Full Campaign Generation", desc: "Multi-channel content strategy created in less time than it takes to brew coffee." },
+              { title: "Full Workspace Generation", desc: "Multi-channel content strategy created in less time than it takes to brew coffee." },
               { title: "Brand Brain", desc: "We analyze your past wins to mimic your exact brand voice and tone perfectly." },
-              { title: "Visual Ad Creation", desc: "Automatic generation of eye-catching posters and social media graphics." },
               { title: "Auto Scheduling", desc: "Set it and forget it. Vega knows exactly when to post for maximum reach." },
-              { title: "Performance Analytics", desc: "Real-time tracking that feeds back into the engine to make future content better." },
               { title: "Meme & Viral Content", desc: "Current trend monitoring to generate highly sharable, viral-ready content daily." }
             ].map((feature, idx) => (
               <div 
@@ -506,22 +494,6 @@ export default function App() {
                 <div className="mt-8 flex items-center gap-2 font-bold uppercase text-xs tracking-widest opacity-0 group-hover:opacity-100 transform translate-x-[-10px] group-hover:translate-x-0 transition-all">
                   Learn More <ArrowRight size={14} />
                 </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* 6. SOCIAL PROOF / STAT BLOCK */}
-        <section className="bg-black text-ivory py-32 px-6">
-          <div className="max-w-[1440px] mx-auto grid grid-cols-1 md:grid-cols-3 gap-20 text-center">
-            {[
-              { val: "10x FASTER", desc: "Than a traditional marketing agency workflow." },
-              { val: "6 PLATFORMS", desc: "Simultaneous content generation and distribution." },
-              { val: "1 SENTENCE", desc: "The only input required to start your dominance." }
-            ].map((stat, idx) => (
-              <div key={idx} className="flex flex-col items-center">
-                <span className="text-6xl md:text-7xl lg:text-8xl font-display mb-4">{stat.val}</span>
-                <p className="text-sm uppercase tracking-[0.2em] opacity-60 font-medium">{stat.desc}</p>
               </div>
             ))}
           </div>
@@ -842,6 +814,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
   const [step, setStep] = useState(1);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [discordUsername, setDiscordUsername] = useState('');
   const [data, setData] = useState({
     brandName: '',
     tagline: '',
@@ -853,7 +826,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
     colors: ['#0A0A0A', '#FFFFFF']
   });
 
-  const nextStep = () => setStep(s => Math.min(s + 1, 6));
+  const nextStep = () => setStep(s => Math.min(s + 1, 7));
   const prevStep = () => setStep(s => Math.max(s - 1, 1));
   
   const handleLaunch = async () => {
@@ -871,8 +844,11 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
         brandDescription: data.description,
         tone: [data.tone],
         targetAudience: data.audience,
-        contentPillars: [] // Not currently in onboarding UI, so default to empty
-      });
+        contentPillars: [], // Not currently in onboarding UI, so default to empty
+        discordConnected: true,
+        discordUserId: discordUsername,
+        discordUsername: discordUsername
+      }, { merge: true });
       onComplete(data);
     } catch (err: any) {
       console.error("Failed to save brand brain:", err);
@@ -906,11 +882,11 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
           </div>
           <div className="flex items-center gap-4">
             <div className="flex gap-1">
-              {[1, 2, 3, 4, 5, 6].map((it) => (
+              {[1, 2, 3, 4, 5, 6, 7].map((it) => (
                 <div key={it} className={`h-1 w-8 ${it <= step ? 'bg-deep-red' : 'bg-black/10'} transition-colors`} />
               ))}
             </div>
-            <span className="text-[10px] font-bold uppercase tracking-widest ml-4 hidden md:inline">Step {step}/6</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest ml-4 hidden md:inline">Step {step}/7</span>
           </div>
         </div>
       </nav>
@@ -1105,6 +1081,39 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
               </div>
             )}
 
+            {step === 7 && (
+              <div className="space-y-12">
+                <h2 className="text-6xl md:text-8xl font-display tracking-tighter leading-[0.85]">CONNECT DISCORD</h2>
+                <div className="space-y-8">
+                  <p className="text-xs font-bold uppercase tracking-widest opacity-60">
+                    Connect your Discord account to receive generated workspace assets and updates.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (auth.currentUser) {
+                        const url = `https://discord.com/oauth2/authorize?client_id=1506400226586394624&redirect_uri=https%3A%2F%2Fphantom-subsequently-steel-portable.trycloudflare.com%2Fauth%2Fdiscord%2Fcallback&response_type=code&scope=identify&state=${auth.currentUser.uid}`;
+                        window.open(url, '_blank');
+                      }
+                    }}
+                    className="w-full bg-black text-ivory p-6 font-bold uppercase text-sm tracking-widest hover:bg-deep-red transition-all shadow-hard"
+                  >
+                    CONNECT DISCORD
+                  </button>
+                  <div className="space-y-3">
+                    <label className="block text-xs font-bold uppercase tracking-widest opacity-60">Discord Username Name</label>
+                    <input 
+                      type="text" 
+                      value={discordUsername}
+                      onChange={e => setDiscordUsername(e.target.value)}
+                      placeholder="E.G. USERNAME#0000 OR USERNAME"
+                      className="w-full bg-ivory border-2 border-black p-6 font-bold uppercase text-sm tracking-widest focus:bg-white focus:outline-none shadow-hard"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="mt-16">
               {saveError && (
                 <div className="mb-8 p-4 border-2 border-deep-red bg-deep-red/5 flex items-center gap-3 text-[10px] font-bold uppercase tracking-widest text-deep-red">
@@ -1122,11 +1131,11 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
                   <ChevronLeft size={20} /> Back
                 </button>
                 <button 
-                  onClick={step === 6 ? handleLaunch : nextStep}
+                  onClick={step === 7 ? handleLaunch : nextStep}
                   disabled={isSaving}
                   className={`bg-deep-red text-ivory px-12 py-6 font-bold uppercase text-sm tracking-[0.3em] transition-all shadow-hard ${isSaving ? 'bg-black/20 cursor-not-allowed' : 'hover:bg-black'}`}
                 >
-                  {isSaving ? 'SAVING...' : (step === 6 ? 'LAUNCH DASHBOARD' : 'CONTINUE')}
+                  {isSaving ? 'SAVING...' : (step === 7 ? 'LAUNCH DASHBOARD' : 'CONTINUE')}
                 </button>
               </div>
             </div>
@@ -1197,175 +1206,85 @@ function LoadingScreen() {
 }
 
 function NewCampaignFlow({ onCancel, onComplete, setView, gallery }: { onCancel: () => void, onComplete: (c: Campaign) => void, setView: (v: AppView) => void, gallery: GalleryItem[] }) {
-  const { systemPrompt } = useBrandBrain();
+  const { brandBrain } = useBrandBrain();
   const [step, setStep] = useState(1);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [genError, setGenError] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [isDeploying, setIsDeploying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     brief: '',
-    platforms: [] as string[],
-    visualStyles: [] as string[],
-    visualExtra: '',
-    inspirations: [] as GalleryItem[],
-    videoVibe: '',
-    videoExtra: '',
-    imageCount: 5,
-    videoCount: 2,
-    duration: 'unlimited'
+    duration: '7 days'
   });
-  const [generatedContent, setGeneratedContent] = useState<CampaignContent[]>([]);
 
-  const platforms = [
-    { id: 'x', label: 'Twitter / X', type: 'text' },
-    { id: 'linkedin', label: 'LinkedIn', type: 'text' },
-    { id: 'instagram', label: 'Instagram', type: 'video' },
-    { id: 'tiktok', label: 'TikTok', type: 'video' }
-  ];
+  const handleDeploy = async () => {
+    if (!auth.currentUser) return;
+    setIsDeploying(true);
+    setError(null);
+    const uid = auth.currentUser.uid;
 
-  const SLOTS = {
-    x: ['09:00 AM', '06:00 PM'],
-    linkedin: ['08:00 AM'],
-    instagram: ['12:00 PM', '07:00 PM'],
-    tiktok: ['07:00 PM'],
-    all: ['10:00 AM', '04:00 PM']
-  };
-
-  const handleAutoSchedule = () => {
-    const daysCount = 7; // Fixed 7-day grid as per prompt
-    const content = [...generatedContent].map(c => ({ ...c, scheduledAt: undefined }));
-    const pool = [...content];
-    
-    // Sort pool: Videos > Images > Text
-    pool.sort((a, b) => {
-      const score = (t: string) => t === 'reel' ? 3 : t === 'image' ? 2 : 1;
-      return score(b.type) - score(a.type);
-    });
-
-    for (let day = 1; day <= daysCount; day++) {
-      let dayHasVideo = false;
-      const dayPlatforms = formData.platforms;
-
-      const availableSlots: {platform: string, time: string}[] = [];
-      dayPlatforms.forEach(p => {
-        const times = (SLOTS as any)[p] || [];
-        times.forEach((t: string) => availableSlots.push({ platform: p, time: t }));
+    try {
+      // 1. Write to Firestore: users/{uid}/campaigns
+      const docRef = await addDoc(collection(db, "users", uid, "campaigns"), {
+        name: formData.name,
+        brief: formData.brief,
+        duration: formData.duration,
+        status: 'active',
+        createdAt: serverTimestamp(),
+        deployedAt: serverTimestamp()
       });
-      SLOTS.all.forEach(t => availableSlots.push({ platform: 'all', time: t }));
 
-      for (const slot of availableSlots) {
-        const itemIdx = pool.findIndex(item => {
-          if (item.scheduledAt) return false;
-          if (slot.platform !== 'all' && item.platform !== slot.platform && item.platform !== 'all') return false;
-          if (item.type === 'reel' && dayHasVideo) return false;
-          return true;
-        });
-
-        if (itemIdx !== -1) {
-          pool[itemIdx].scheduledAt = `Day ${day} - ${slot.time}`;
-          if (pool[itemIdx].type === 'reel') dayHasVideo = true;
-        }
-      }
-    }
-    setGeneratedContent(content);
-  };
-
-  const nextStep = async () => {
-    if (step === 2) {
-      if (!systemPrompt) {
-        setGenError("Brand Brain not found. Please complete onboarding first.");
-        return;
-      }
-
-      setIsGenerating(true);
-      setGenError(null);
-      setStep(3);
-
+      // 2. Fetch discordUserId from users/{uid}/brandBrain/current
+      let discordUserId = "";
       try {
-        const pack = await generateContentPack(systemPrompt, formData.brief);
-        
-        const mappedContent: CampaignContent[] = [
-          ...pack.tweets.map((t, i) => ({ 
-            id: `tweet-${i}-${Date.now()}`, 
-            type: 'tweet' as const, 
-            platform: 'x', 
-            body: t 
-          })),
-          { 
-            id: `li-1-${Date.now()}`, 
-            type: 'linkedin' as const, 
-            platform: 'linkedin', 
-            body: pack.linkedin 
-          },
-          { 
-            id: `reel-1-${Date.now()}`, 
-            type: 'reel' as const, 
-            platform: 'tiktok', 
-            body: `HOOK: ${pack.reelScript.hook}\n\nBODY: ${pack.reelScript.body}\n\nCTA: ${pack.reelScript.cta}` 
-          },
-          { 
-            id: `meme-1-${Date.now()}`, 
-            type: 'meme' as const, 
-            platform: 'all', 
-            body: `TOP: ${pack.memeCopy.topText}\n\nBOTTOM: ${pack.memeCopy.bottomText}` 
-          },
-          { 
-            id: `email-1-${Date.now()}`, 
-            type: 'email' as const, 
-            platform: 'all', 
-            body: pack.email.body, 
-            subject: pack.email.subject 
-          },
-        ];
-
-        // Save to Firestore: users/{uid}/campaigns/{auto-id}
-        if (auth.currentUser) {
-          try {
-            await addDoc(collection(db, "users", auth.currentUser.uid, "campaigns"), {
-              contentPack: pack,
-              createdAt: serverTimestamp(),
-              campaignInput: formData.brief
-            });
-          } catch (fsErr) {
-            console.error("Firestore Save Error:", fsErr);
-          }
+        const bdRef = doc(db, "users", uid, "brandBrain", "current");
+        const bdSnap = await getDoc(bdRef);
+        if (bdSnap.exists()) {
+          const bdData = bdSnap.data();
+          discordUserId = bdData?.discordUserId || bdData?.discordUsername || "";
         }
-
-        setGeneratedContent(mappedContent);
-        setStep(4);
-      } catch (err: any) {
-        console.error("Generation Error:", err);
-        setGenError(err.message || "Failed to generate content.");
-        setStep(2);
-      } finally {
-        setIsGenerating(false);
+      } catch (bdErr) {
+        console.warn("Could not read brandBrain for Discord user:", bdErr);
       }
-    } else if (step === 4) {
-      handleAutoSchedule();
-      setStep(5);
-    } else {
-      setStep(s => s + 1);
+
+      // 3. Trigger endpoint if discordUserId is present
+      if (discordUserId) {
+        try {
+          await fetch("https://phantom-subsequently-steel-portable.trycloudflare.com/deploy", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              userId: uid,
+              discordUserId: discordUserId
+            })
+          });
+        } catch (fetchErr) {
+          console.warn("Deploy endpoint request failed or timed out silently:", fetchErr);
+        }
+      } else {
+        console.warn("Warning: discordUserId missing or empty. Skipping deploy POST.");
+      }
+
+      // 4. Complete flow locally and redirect
+      onComplete({
+        id: docRef.id,
+        name: formData.name || 'UNNAMED WORKSPACE',
+        platforms: ['discord'],
+        status: 'active',
+        progress: 100,
+        contentCount: 0,
+        duration: formData.duration,
+        createdAt: new Date().toISOString(),
+        brief: formData.brief,
+        content: []
+      });
+    } catch (err: any) {
+      console.error("Failed to deploy workspace:", err);
+      setError(err?.message || "Deployment failed. Please try again.");
+    } finally {
+      setIsDeploying(false);
     }
-  };
-
-  const handleUpdateBody = (id: string, body: string) => {
-    setGeneratedContent(prev => prev.map(c => c.id === id ? { ...c, body } : c));
-  };
-
-  const handleLaunch = () => {
-    onComplete({
-      id: Math.random().toString(36).substr(2, 9),
-      name: formData.name || 'UNNAMED CAMPAIGN',
-      platforms: formData.platforms,
-      status: 'active',
-      progress: 0,
-      contentCount: generatedContent.length,
-      duration: formData.duration,
-      createdAt: new Date().toISOString(),
-      brief: formData.brief,
-      content: generatedContent
-    });
   };
 
   return (
@@ -1373,11 +1292,11 @@ function NewCampaignFlow({ onCancel, onComplete, setView, gallery }: { onCancel:
       <nav className="fixed top-0 left-0 w-full bg-ivory z-40 border-b-2 border-black">
         <div className="max-w-[1440px] mx-auto px-6 h-20 flex items-center justify-between">
            <button onClick={onCancel} className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 hover:text-deep-red">
-             <ChevronLeft size={16} /> Cancel Campaign
+             <ChevronLeft size={16} /> Cancel Workspace
            </button>
            <div className="flex gap-2">
-             {[1, 2, 3, 4, 5, 6].map(it => (
-                <div key={it} className={`h-1 w-6 ${it <= step ? 'bg-deep-red' : 'bg-black/10'}`} />
+             {[1, 2].map(it => (
+                <div key={it} className={`h-1 w-6 transition-all ${it <= step ? 'bg-deep-red' : 'bg-black/10'}`} />
              ))}
            </div>
         </div>
@@ -1387,666 +1306,129 @@ function NewCampaignFlow({ onCancel, onComplete, setView, gallery }: { onCancel:
         <div className="max-w-4xl w-full z-10 py-12">
           <AnimatePresence mode="wait">
             {step === 1 && (
-              <motion.div key="step1" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-12">
-                <h2 className="text-6xl md:text-8xl font-display tracking-tighter leading-[0.85]">THE BRIEF</h2>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 text-left">
-                  <div className="space-y-6">
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-widest mb-3 opacity-60">Campaign Name</label>
-                      <input 
-                        type="text" 
-                        value={formData.name} 
-                        onChange={e => setFormData({...formData, name: e.target.value})}
-                        placeholder="SUMMER SOLSTICE 2026"
-                        className="w-full bg-ivory border-2 border-black p-5 font-bold uppercase text-sm tracking-widest focus:bg-white focus:outline-none shadow-hard"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-widest mb-3 opacity-60">The Mission</label>
-                      <textarea 
-                        rows={4}
-                        value={formData.brief} 
-                        onChange={e => setFormData({...formData, brief: e.target.value})}
-                        placeholder="WHAT ARE WE PROMOTING?"
-                        className="w-full bg-ivory border-2 border-black p-5 font-bold uppercase text-sm tracking-widest focus:bg-white focus:outline-none shadow-hard resize-none"
-                      />
-                    </div>
+              <motion.div 
+                key="step1" 
+                initial={{ opacity: 0, y: 10 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                exit={{ opacity: 0, y: -10 }} 
+                className="space-y-12 max-w-2xl mx-auto text-left"
+              >
+                <h2 className="text-6xl md:text-8xl font-display tracking-tighter leading-[0.85] uppercase">THE BRIEF</h2>
+                <div className="space-y-8">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-widest mb-3 opacity-60">Workspace Name</label>
+                    <input 
+                      type="text" 
+                      value={formData.name} 
+                      onChange={e => setFormData({...formData, name: e.target.value})}
+                      placeholder="SUMMER SOLSTICE 2026"
+                      className="w-full bg-ivory border-2 border-black p-5 font-bold uppercase text-sm tracking-widest focus:bg-white focus:outline-none shadow-hard"
+                    />
                   </div>
-                  <div className="space-y-8">
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-widest mb-6 opacity-60">Channels</label>
-                      <div className="grid grid-cols-2 gap-4">
-                        {platforms.map(p => {
-                          return (
-                            <button
-                              key={p.id}
-                              onClick={() => {
-                                const next = formData.platforms.includes(p.id) 
-                                  ? formData.platforms.filter(id => id !== p.id) 
-                                  : [...formData.platforms, p.id];
-                                setFormData({...formData, platforms: next});
-                              }}
-                              className={`p-6 border-2 border-black flex flex-col gap-3 font-bold uppercase text-[10px] tracking-widest shadow-hard transition-all relative text-left ${formData.platforms.includes(p.id) ? 'bg-deep-red text-ivory -translate-y-1' : 'bg-ivory text-black hover:bg-black/5'}`}
-                            >
-                              <div className="flex justify-between items-center w-full">
-                                {p.label}
-                              </div>
-                            </button>
-                          );
-                        })}
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-widest mb-3 opacity-60">The Mission Block</label>
+                    <textarea 
+                      rows={4}
+                      value={formData.brief} 
+                      onChange={e => setFormData({...formData, brief: e.target.value})}
+                      placeholder="WHAT ARE WE PROMOTING?"
+                      className="w-full bg-ivory border-2 border-black p-5 font-bold uppercase text-sm tracking-widest focus:bg-white focus:outline-none shadow-hard resize-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-widest mb-3 opacity-60">Workspace Duration</label>
+                    <div className="relative inline-block w-full">
+                      <select
+                        value={formData.duration}
+                        onChange={e => setFormData({...formData, duration: e.target.value})}
+                        className="w-full px-5 py-5 border-2 border-black font-bold text-sm uppercase tracking-widest bg-amber shadow-hard focus:outline-none appearance-none cursor-pointer"
+                      >
+                        <option value="7 days">7 days</option>
+                        <option value="14 days">14 days</option>
+                        <option value="30 days">30 days</option>
+                        <option value="Unlimited">Unlimited</option>
+                      </select>
+                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-6 text-black">
+                        <ChevronRight size={16} className="rotate-90" />
                       </div>
-                    </div>
-                    <div>
-                       <label className="block text-[10px] font-bold uppercase tracking-widest mb-3 opacity-60">Campaign Duration</label>
-                       <div className="flex items-center gap-3">
-                          {false ? (
-                            <div className="px-4 py-2 border-2 border-black font-bold text-[10px] uppercase tracking-widest bg-black/5 opacity-50">
-                              3 DAYS
-                            </div>
-                          ) : (
-                            <select
-                              value={formData.duration}
-                              onChange={e => setFormData({...formData, duration: e.target.value})}
-                              className="px-4 py-2 border-2 border-black font-bold text-[10px] uppercase tracking-widest bg-amber shadow-hard focus:outline-none appearance-none cursor-pointer"
-                            >
-                              <option value="7">7 DAYS</option>
-                              <option value="14">14 DAYS</option>
-                              <option value="30">30 DAYS</option>
-                              <option value="unlimited">UNLIMITED</option>
-                            </select>
-                          )}
-
-                       </div>
                     </div>
                   </div>
                 </div>
-                <div className="flex justify-end pt-12">
-                  <button onClick={nextStep} className="bg-deep-red text-ivory px-12 py-6 font-bold uppercase text-sm tracking-[0.3em] hover:bg-black transition-all shadow-hard">
-                    NEXT: CREATIVE
+
+                {error && (
+                  <div className="p-4 border-2 border-deep-red bg-deep-red/5 flex items-center gap-3 text-[10px] font-bold uppercase tracking-widest text-deep-red">
+                    <AlertCircle size={16} />
+                    {error}
+                  </div>
+                )}
+
+                <div className="flex justify-end pt-8">
+                  <button 
+                    onClick={() => {
+                      if (formData.name.trim() && formData.brief.trim()) {
+                        setStep(2);
+                      }
+                    }} 
+                    disabled={!formData.name.trim() || !formData.brief.trim()}
+                    className={`bg-deep-red text-ivory px-12 py-6 font-bold uppercase text-sm tracking-[0.3em] transition-all shadow-hard ${(!formData.name.trim() || !formData.brief.trim()) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-black'}`}
+                  >
+                    NEXT
                   </button>
                 </div>
               </motion.div>
             )}
 
             {step === 2 && (
-              <motion.div key="step2" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-12 text-left">
-                <h2 className="text-6xl md:text-8xl font-display tracking-tighter leading-[0.85]">CREATIVE DIRECTION</h2>
+              <motion.div 
+                key="step2" 
+                initial={{ opacity: 0, y: 10 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                exit={{ opacity: 0, y: -10 }} 
+                className="space-y-12 max-w-2xl mx-auto text-left"
+              >
+                <h2 className="text-6xl md:text-8xl font-display tracking-tighter leading-[0.85] uppercase">CONFIRMATION</h2>
                 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-                  <div className="space-y-10">
-                    {/* Visual Style Selection */}
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-widest mb-4 opacity-60">What should your visuals feel like?</label>
-                      <div className="flex flex-wrap gap-2">
-                        {['Bold & Loud', 'Clean & Minimal', 'Dark & Moody', 'Bright & Energetic', 'Luxury', 'Playful'].map(style => {
-                          const isSelected = formData.visualStyles.includes(style);
-                          return (
-                            <button
-                              key={style}
-                              onClick={() => {
-                                const next = isSelected 
-                                  ? formData.visualStyles.filter(s => s !== style) 
-                                  : [...formData.visualStyles, style];
-                                setFormData({...formData, visualStyles: next});
-                              }}
-                              className={`px-4 py-2 border-2 border-black font-bold uppercase text-[10px] tracking-widest shadow-hard transition-all ${isSelected ? 'bg-amber text-black' : 'bg-ivory hover:bg-black/5'}`}
-                            >
-                              {style}
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      {/* INSPIRATION INTEGRATION */}
-                      <div className="mt-10 space-y-4">
-                         <label className="block text-[10px] font-bold uppercase tracking-widest opacity-60">Need inspiration? Pick from gallery</label>
-                         <div className="flex gap-4 overflow-x-auto pb-6 custom-scrollbar no-scrollbar scroll-smooth">
-                            {gallery.filter(g => {
-                              if (formData.visualStyles.length === 0) return true;
-                              return formData.visualStyles.some(s => s.toUpperCase() === g.style);
-                            }).slice(0, 6).map(item => {
-                               const isSelected = formData.inspirations.some(i => i.id === item.id);
-                               return (
-                                 <div key={item.id} className="min-w-[140px] aspect-square border-2 border-black relative group shadow-hard shrink-0 overflow-hidden">
-                                    <div className={`w-full h-full ${item.color} transition-transform group-hover:scale-110`} />
-                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-3 flex-col gap-2">
-                                       <p className="text-[7px] font-bold text-ivory uppercase tracking-widest text-center line-clamp-2 mb-1">{item.prompt}</p>
-                                       <button 
-                                         onClick={() => {
-                                           if (isSelected) {
-                                             setFormData({...formData, inspirations: formData.inspirations.filter(i => i.id !== item.id)});
-                                           } else if (formData.inspirations.length < 2) {
-                                             setFormData({...formData, inspirations: [...formData.inspirations, item]});
-                                           }
-                                         }}
-                                         className={`w-full py-2 font-bold uppercase text-[8px] tracking-widest transition-all ${isSelected ? 'bg-amber text-black' : 'bg-deep-red text-ivory hover:scale-105'}`}
-                                       >
-                                         {isSelected ? 'SELECTED' : 'USE THIS'}
-                                       </button>
-                                    </div>
-                                 </div>
-                               );
-                            })}
-                         </div>
-                      </div>
-
-                      <div className="mt-6 space-y-4">
-                         <label className="block text-[10px] font-bold uppercase tracking-widest opacity-60">
-                           {formData.inspirations.length > 0 ? 'DESCRIBE ANY EXTRA DIRECTION (OPTIONAL)' : 'DESCRIBE YOUR VIBE'}
-                         </label>
-                         
-                         {formData.inspirations.length > 0 && (
-                           <div className="flex gap-4 mb-4">
-                              {formData.inspirations.map(ins => (
-                                <div key={ins.id} className="bg-black text-ivory px-3 py-2 flex items-center gap-3 border border-ivory/20 shadow-hard animate-in slide-in-from-left-4">
-                                   <div className={`w-3 h-3 ${ins.color}`} />
-                                   <span className="text-[7px] font-bold uppercase tracking-widest truncate max-w-[80px]">{ins.style}</span>
-                                   <button onClick={() => setFormData({...formData, inspirations: formData.inspirations.filter(i => i.id !== ins.id)})} className="hover:text-amber"><X size={10} /></button>
-                                </div>
-                              ))}
-                           </div>
-                         )}
-
-                         <div className="relative">
-                            <input 
-                              type="text"
-                              value={formData.visualExtra}
-                              onChange={e => setFormData({...formData, visualExtra: e.target.value})}
-                              placeholder={formData.inspirations.length > 0 ? "ADD ANY EXTRA DETAIL FOR VEGA..." : "Anything else? (optional)"}
-                              className="w-full bg-transparent border-b-2 border-black/20 p-2 font-bold uppercase text-[10px] tracking-widest focus:border-black focus:outline-none"
-                            />
-                            {formData.inspirations.length > 0 && (
-                              <Sparkles size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-amber animate-pulse" />
-                            )}
-                         </div>
-                      </div>
-                    </div>
-
-                    {/* Video Vibe Selection */}
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-widest mb-4 opacity-60">What's the energy of your video?</label>
-                      <div className="flex flex-wrap gap-2">
-                        {['Fast Cuts', 'Cinematic', 'Talking Head', 'Text on Screen', 'Behind the Scenes'].map(vibe => {
-                          const isSelected = formData.videoVibe === vibe;
-                          return (
-                            <button
-                              key={vibe}
-                              onClick={() => setFormData({...formData, videoVibe: vibe})}
-                              className={`px-4 py-2 border-2 border-black font-bold uppercase text-[10px] tracking-widest shadow-hard transition-all ${isSelected ? 'bg-deep-red text-ivory' : 'bg-ivory hover:bg-black/5'}`}
-                            >
-                              {vibe}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <input 
-                        type="text"
-                        value={formData.videoExtra}
-                        onChange={e => setFormData({...formData, videoExtra: e.target.value})}
-                        placeholder="Extra direction? (optional)"
-                        className="w-full mt-4 bg-transparent border-b-2 border-black/20 p-2 font-bold uppercase text-[10px] tracking-widest focus:border-black focus:outline-none"
-                      />
-                    </div>
+                <div className="border-4 border-black p-8 bg-white shadow-hard space-y-8">
+                  <div className="space-y-2 border-b-2 border-black/10 pb-6">
+                    <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Workspace Name</span>
+                    <p className="text-3xl font-display tracking-tight uppercase leading-none">{formData.name || 'UNNAMED WORKSPACE'}</p>
                   </div>
 
-                  <div className="space-y-10">
-                    {/* Content Count Selection */}
-                    <div className="bg-white border-2 border-black p-8 shadow-hard space-y-8">
-                       <h4 className="text-xl font-display tracking-tight">CONTENT VOLUME</h4>
-                       
-                       <div className="space-y-6">
-                         <div>
-                            <div className="flex justify-between items-center mb-3">
-                              <label className="block text-[10px] font-bold uppercase tracking-widest opacity-60">How many images?</label>
-                            </div>
-                            <div className="flex items-center gap-4">
-                              <select 
-                                value={formData.imageCount}
-                                onChange={e => setFormData({...formData, imageCount: Number(e.target.value)})}
-                                className="w-full bg-ivory border-2 border-black p-4 font-bold uppercase text-xs tracking-widest focus:outline-none appearance-none"
-                              >
-                                {Array.from({ length: 10 }).map((_, i) => (
-                                  <option key={i} value={i + 1}>{i + 1} IMAGES</option>
-                                ))}
-                              </select>
-                            </div>
-                         </div>
+                  <div className="space-y-2 border-b-2 border-black/10 pb-6">
+                    <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">The Mission Block</span>
+                    <p className="text-sm font-bold uppercase tracking-wider leading-relaxed">{formData.brief || 'NO BRIEF PROVIDED'}</p>
+                  </div>
 
-                         <div>
-                            <div className="flex justify-between items-center mb-3">
-                              <label className="block text-[10px] font-bold uppercase tracking-widest opacity-60">How many videos?</label>
-                            </div>
-                            <select 
-                              value={formData.videoCount}
-                              onChange={e => setFormData({...formData, videoCount: Number(e.target.value)})}
-                              className="w-full bg-ivory border-2 border-black p-4 font-bold uppercase text-xs tracking-widest focus:outline-none appearance-none"
-                            >
-                              {Array.from({ length: 5 }).map((_, i) => (
-                                <option key={i} value={i + 1}>{i + 1} VIDEO{i > 0 ? 'S' : ''}</option>
-                              ))}
-                            </select>
-                         </div>
-                       </div>
+                  <div className="space-y-2 pb-2">
+                    <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Workspace Duration</span>
+                    <div className="inline-block px-4 py-2 border-2 border-black bg-amber font-bold text-xs uppercase tracking-widest">
+                      {formData.duration.toUpperCase()}
                     </div>
                   </div>
                 </div>
 
-                <div className="flex justify-between items-center pt-12">
-                  <button onClick={() => setStep(1)} className="text-[10px] font-bold uppercase tracking-widest hover:text-burnt">Back to Brief</button>
-                  <button 
-                    onClick={nextStep} 
-                    disabled={isGenerating}
-                    className={`bg-deep-red text-ivory px-12 py-6 font-bold uppercase text-sm tracking-[0.3em] transition-all shadow-hard ${isGenerating ? 'opacity-50 cursor-not-allowed' : 'hover:bg-black'}`}
-                  >
-                    {isGenerating ? 'VEGA IS THINKING...' : 'BUILD CONTENT'}
-                  </button>
-                </div>
-                {genError && (
-                  <div className="mt-6 p-4 border-2 border-deep-red bg-deep-red/5 flex items-center gap-3 text-[10px] font-bold uppercase tracking-widest text-deep-red">
+                {error && (
+                  <div className="p-4 border-2 border-deep-red bg-deep-red/5 flex items-center gap-3 text-[10px] font-bold uppercase tracking-widest text-deep-red">
                     <AlertCircle size={16} />
-                    {genError}
+                    {error}
                   </div>
                 )}
-              </motion.div>
-            )}
 
-            {step === 3 && (
-              <LoadingScreen />
-            )}
-
-            {step === 4 && (
-              <motion.div key="step4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pt-20 pb-32">
-                 <div className="flex flex-col lg:flex-row gap-12 text-left relative">
-                    {/* LEFT COLUMN: CARDS */}
-                    <div className="lg:w-[70%] space-y-12">
-                       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-8">
-                          <div>
-                             <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-2">Review Pack</p>
-                             <h2 className="text-6xl font-display tracking-tighter leading-none">{formData.name || 'UNNAMED CAMPAIGN'}</h2>
-                          </div>
-                          <div className="flex items-center gap-4">
-                             <div className="flex items-center gap-2">
-                                {formData.platforms.map(p => {
-                                   const config = platforms.find(pl => pl.id === p);
-                                   return (
-                                      <div key={p} className="w-8 h-8 rounded-full border-2 border-black flex items-center justify-center bg-white" title={config?.label}>
-                                         {p === 'x' && <Zap size={14} />}
-                                         {p === 'linkedin' && <Briefcase size={14} />}
-                                         {p === 'instagram' && <LucideImage size={14} />}
-                                         {p === 'tiktok' && <Video size={14} />}
-                                      </div>
-                                   );
-                                })}
-                             </div>
-                             <div className="px-3 py-1 border-2 border-black font-bold text-[8px] uppercase tracking-widest bg-amber shadow-hard">
-                                {formData.duration === 'unlimited' ? 'UNLIMITED' : `${formData.duration} DAYS`}
-                             </div>
-                          </div>
-                       </div>
-
-                       <div className="space-y-8">
-                          {generatedContent.map((item, idx) => {
-                             const isImage = item.type === 'image';
-                             const isVideo = item.type === 'reel';
-                             
-                             return (
-                               <div key={item.id} className="border-2 border-black p-8 bg-ivory shadow-hard relative group">
-                                  <div className="flex justify-between items-center mb-6">
-                                     <div className="flex items-center gap-3">
-                                        <span className="text-[10px] font-bold uppercase tracking-widest bg-black text-ivory px-3 py-1">
-                                           {item.type === 'reel' ? 'VIDEO SCRIPT' : item.type.toUpperCase()}
-                                        </span>
-                                        <div className="opacity-40">
-                                           {item.platform === 'x' && <Zap size={14} />}
-                                           {item.platform === 'linkedin' && <Briefcase size={14} />}
-                                           {item.platform === 'instagram' && <LucideImage size={14} />}
-                                           {item.platform === 'tiktok' && <Video size={14} />}
-                                           {item.platform === 'all' && <Globe size={14} />}
-                                        </div>
-                                     </div>
-                                     <button className="w-10 h-10 border-2 border-black flex items-center justify-center hover:bg-amber transition-colors shadow-hard transform group-hover:-translate-y-1 transition-transform">
-                                        <RefreshCcw size={16} />
-                                     </button>
-                                  </div>
-
-                                  {isImage ? (
-                                    <div className="space-y-4">
-                                       <div className="aspect-video bg-black/5 border-2 border-black border-dashed flex items-center justify-center relative overflow-hidden group/img">
-                                          <div className={`absolute inset-0 flex items-center justify-center font-display text-4xl opacity-10 rotate-12`}>
-                                             {formData.visualStyles[0] || 'BOLD'}
-                                          </div>
-                                          <LucideImage size={40} strokeWidth={1} className="relative z-10" />
-                                       </div>
-                                       <p className="text-[10px] font-bold uppercase tracking-widest opacity-60">Visual Style: {formData.visualStyles.join(' + ') || 'CLEAN'}</p>
-                                       <div className="flex items-center gap-2 mt-4">
-                                          <div className="h-1 flex-grow bg-black/10">
-                                             <div className="h-full bg-amber" style={{ width: '80%' }} />
-                                          </div>
-                                          <span className="text-[8px] font-bold uppercase tracking-widest opacity-40">4/5 IMAGES REMAINING</span>
-                                       </div>
-                                    </div>
-                                  ) : isVideo ? (
-                                    <div className="space-y-6">
-                                       <div className="aspect-video bg-black flex items-center justify-center relative group/vid overflow-hidden">
-                                          <div className="absolute inset-0 bg-gradient-to-t from-deep-red/20 to-transparent" />
-                                          <button className="w-16 h-16 rounded-full border-2 border-ivory flex items-center justify-center text-ivory hover:bg-ivory hover:text-black transition-all relative z-10">
-                                             <Plus size={32} className="rotate-45" />
-                                          </button>
-                                          <div className="absolute bottom-4 left-4">
-                                            <p className="text-[8px] font-bold uppercase tracking-widest text-ivory">Video generating... ready in ~60 seconds</p>
-                                          </div>
-                                       </div>
-                                       <textarea 
-                                         className="w-full bg-transparent border-none p-0 font-bold uppercase text-xs tracking-widest resize-none focus:outline-none leading-relaxed"
-                                         rows={5}
-                                         value={item.body}
-                                         onChange={(e) => handleUpdateBody(item.id, e.target.value)}
-                                       />
-                                       <div className="flex items-center gap-2">
-                                          <span className="text-[8px] font-bold uppercase tracking-widest bg-deep-red text-ivory px-2 py-1">{formData.videoVibe}</span>
-                                       </div>
-                                    </div>
-                                  ) : (
-                                    <textarea 
-                                      className="w-full bg-transparent border-none p-0 font-bold uppercase text-xs tracking-widest resize-none focus:outline-none leading-relaxed"
-                                      rows={6}
-                                      value={item.body}
-                                      onChange={(e) => handleUpdateBody(item.id, e.target.value)}
-                                    />
-                                  )}
-                               </div>
-                             );
-                          })}
-                       </div>
-                    </div>
-
-                    {/* RIGHT COLUMN: BRAND BRAIN SUMMARY */}
-                    <div className="lg:w-[30%]">
-                       <div className="sticky top-32 space-y-8">
-                          <div className="bg-white border-2 border-black p-8 shadow-hard space-y-6">
-                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-amber border-2 border-black shadow-hard flex items-center justify-center -rotate-6">
-                                   <Sparkles size={18} />
-                                </div>
-                                <h3 className="text-2xl font-display leading-none">BRAND BRAIN</h3>
-                             </div>
-
-                             <div className="space-y-6">
-                                <div>
-                                   <label className="block text-[8px] font-bold uppercase tracking-widest opacity-40 mb-2">Campaign Goal</label>
-                                   <p className="text-[10px] font-bold uppercase tracking-tight leading-relaxed">{formData.brief || 'General Awareness'}</p>
-                                </div>
-
-                                <div>
-                                   <label className="block text-[8px] font-bold uppercase tracking-widest opacity-40 mb-2">Visual Logic</label>
-                                   <div className="flex flex-wrap gap-1">
-                                      {formData.visualStyles.map(s => (
-                                         <span key={s} className="px-2 py-1 bg-black text-ivory text-[8px] font-bold uppercase tracking-widest">{s}</span>
-                                      ))}
-                                   </div>
-                                </div>
-
-                                <div>
-                                   <label className="block text-[8px] font-bold uppercase tracking-widest opacity-40 mb-2">Messaging Vibe</label>
-                                   <span className="px-2 py-1 border border-black text-[8px] font-bold uppercase tracking-widest">{formData.videoVibe} ENERGY</span>
-                                </div>
-                             </div>
-
-                             <div className="pt-6 border-t border-black/10">
-                                <button className="w-full py-4 border-2 border-black font-bold uppercase text-[10px] tracking-widest hover:bg-black hover:text-ivory transition-all shadow-hard">
-                                   Save as Preset
-                                </button>
-                             </div>
-                          </div>
-                          
-                          <div className="p-6 bg-amber/10 border-2 border-black shadow-hard">
-                             <p className="text-[10px] font-bold uppercase tracking-widest leading-relaxed">
-                                VEGA AI has optimized this pack for {formData.platforms.join(' & ')} engagement metrics. 
-                             </p>
-                          </div>
-                       </div>
-                    </div>
-                 </div>
-
-                 {/* FIXED BOTTOM BAR */}
-                 <div className="fixed bottom-0 left-0 right-0 bg-ivory border-t-4 border-black p-6 z-[60] shadow-[0_-8px_20px_rgba(0,0,0,0.1)]">
-                    <div className="max-w-[1440px] mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-                       <div className="flex items-center gap-6">
-                          <div className="flex flex-col">
-                             <span className="text-[8px] font-bold uppercase tracking-widest opacity-40">Status: Generation Complete</span>
-                             <div className="flex items-center gap-4 mt-1">
-                                <span className="text-xs font-bold uppercase tracking-widest">{formData.videoCount} VIDEOS</span>
-                                <div className="w-1 h-1 bg-black rounded-full" />
-                                <span className="text-xs font-bold uppercase tracking-widest">{formData.imageCount} IMAGES</span>
-                                <div className="w-1 h-1 bg-black rounded-full" />
-                                <span className="text-xs font-bold uppercase tracking-widest">{generatedContent.filter(c => c.type !== 'image' && c.type !== 'reel').length} TEXT POSTS</span>
-                             </div>
-                          </div>
-                       </div>
-
-                       <div className="flex items-center gap-8">
-                          <button onClick={nextStep} className="bg-deep-red text-ivory px-12 py-5 font-bold uppercase text-sm tracking-[0.3em] hover:bg-black transition-all shadow-hard whitespace-nowrap flex items-center gap-3">
-                             <Send size={18} /> APPROVE & SCHEDULE
-                          </button>
-                       </div>
-                    </div>
-                 </div>
-              </motion.div>
-            )}
-
-            {step === 5 && (
-              <motion.div key="step5" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 bg-ivory flex flex-col pt-20">
-                {/* TOP BAR */}
-                <div className="h-20 bg-ivory border-b-2 border-black px-8 flex items-center justify-between shrink-0">
-                  <div className="flex items-center gap-4">
-                    <h2 className="text-3xl font-display leading-none">{formData.name || 'UNNAMED CAMPAIGN'}</h2>
-                    <div className="px-3 py-1 bg-amber border-2 border-black font-bold uppercase text-[8px] tracking-widest shadow-hard">
-                      {formData.duration} DAYS
-                    </div>
-                    <div className="flex items-center gap-2">
-                       {formData.platforms.map(p => (
-                         <div key={p} className="opacity-40">
-                            {p === 'x' && <Zap size={14} />}
-                            {p === 'linkedin' && <Briefcase size={14} />}
-                            {p === 'instagram' && <LucideImage size={14} />}
-                            {p === 'tiktok' && <Video size={14} />}
-                         </div>
-                       ))}
-                    </div>
-                  </div>
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-6 pt-6">
                   <button 
-                    onClick={() => setStep(6)}
-                    className="bg-deep-red text-ivory px-8 py-3 font-bold uppercase text-xs tracking-widest hover:bg-black transition-all shadow-hard flex items-center gap-2"
+                    onClick={() => setStep(1)} 
+                    disabled={isDeploying}
+                    className="text-[10px] font-bold uppercase tracking-widest hover:text-burnt"
                   >
-                    LAUNCH CAMPAIGN <ArrowRight size={16} />
+                    Back to edit
                   </button>
-                </div>
-
-                <div className="flex-grow flex overflow-hidden">
-                  {/* LEFT SIDEBAR: POOL */}
-                  <div className="w-80 border-r-2 border-black flex flex-col bg-black/5 shrink-0">
-                    <div className="p-6 border-b border-black/10">
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-sm font-bold uppercase tracking-widest">CONTENT POOL</h3>
-                        <span className="text-[10px] font-bold opacity-40">{generatedContent.filter(c => !c.scheduledAt).length} UNPLACED</span>
-                      </div>
-                      <p className="text-[8px] font-bold uppercase opacity-40">Drag or click items to place them on the timeline</p>
-                    </div>
-                    <div className="flex-grow overflow-y-auto p-4 space-y-4 custom-scrollbar">
-                      {generatedContent.filter(c => !c.scheduledAt).length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center text-center p-8 opacity-20 italic">
-                          <Check size={40} className="mb-4" />
-                          <p className="text-[10px] font-bold uppercase tracking-widest">All content placed</p>
-                        </div>
-                      ) : (
-                        generatedContent.filter(c => !c.scheduledAt).map(item => (
-                          <div 
-                            key={item.id}
-                            className="bg-white border-2 border-black p-4 shadow-hard cursor-pointer hover:bg-amber transition-colors group"
-                            onClick={() => {
-                              // Simple click-to-place logic: find first empty slot
-                              setGeneratedContent(prev => prev.map(c => c.id === item.id ? { ...c, scheduledAt: `Day 1 - 09:00 AM` } : c));
-                            }}
-                          >
-                             <div className="flex justify-between items-center mb-2">
-                                <div className="flex items-center gap-2">
-                                  {item.platform === 'x' && <Zap size={10} />}
-                                  {item.platform === 'linkedin' && <Briefcase size={10} />}
-                                  {item.platform === 'instagram' && <LucideImage size={10} />}
-                                  {item.platform === 'tiktok' && <Video size={10} />}
-                                  {item.platform === 'all' && <Globe size={10} />}
-                                  <span className="text-[8px] font-bold uppercase tracking-widest opacity-60">{item.type}</span>
-                                </div>
-                                <Plus size={12} className="opacity-0 group-hover:opacity-100" />
-                             </div>
-                             <p className="text-[10px] font-bold uppercase tracking-tight line-clamp-2 leading-tight">{item.body}</p>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                    <div className="p-4 bg-black text-ivory border-t-2 border-black">
-                       <p className="text-[8px] font-bold uppercase tracking-widest">
-                         {generatedContent.filter(c => c.scheduledAt).length} PIECES SCHEDULED
-                       </p>
-                    </div>
-                  </div>
-
-                  {/* MAIN AREA: CALENDAR GRID */}
-                  <div className="flex-grow overflow-x-auto bg-ivory custom-scrollbar">
-                    <div className="grid grid-cols-7 h-full min-w-[1200px]">
-                      {Array.from({ length: 7 }).map((_, i) => {
-                        const day = i + 1;
-                        const dayItems = generatedContent.filter(c => c.scheduledAt?.startsWith(`Day ${day}`));
-                        
-                        return (
-                          <div key={day} className={`border-r-2 border-black flex flex-col ${day === 7 ? 'border-r-0' : ''}`}>
-                             <div className="p-4 border-b-2 border-black bg-black text-ivory sticky top-0 z-10 flex flex-col">
-                                <span className="text-[8px] font-bold tracking-widest opacity-60">DAY {day}</span>
-                                <span className="text-xl font-display tracking-tighter">MAY {9 + i}</span>
-                             </div>
-                             
-                             <div className="flex-grow p-4 space-y-4">
-                                {dayItems.length === 0 ? (
-                                  <div className="h-32 border-2 border-black border-dashed flex flex-col items-center justify-center opacity-20">
-                                     <AlertCircle size={20} className="mb-2" />
-                                     <p className="text-[8px] font-bold uppercase">NO POSTS</p>
-                                  </div>
-                                ) : (
-                                  dayItems.sort((a,b) => (a.scheduledAt || '').localeCompare(b.scheduledAt || '')).map(item => (
-                                    <div 
-                                      key={item.id}
-                                      className={`border-2 border-black p-4 bg-white shadow-hard relative group transition-all ${expandedId === item.id ? 'z-20 scale-105 border-deep-red' : 'hover:-translate-y-1'}`}
-                                    >
-                                       <button 
-                                         onClick={() => setGeneratedContent(prev => prev.map(c => c.id === item.id ? { ...c, scheduledAt: undefined } : c))}
-                                         className="absolute -top-2 -right-2 w-6 h-6 bg-black text-ivory flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-30"
-                                       >
-                                         <X size={12} />
-                                       </button>
-                                       
-                                       <div className="flex justify-between items-start mb-3 cursor-pointer" onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}>
-                                          <div className="flex items-center gap-2">
-                                             <div className="w-6 h-6 border border-black flex items-center justify-center bg-amber">
-                                                {item.platform === 'x' && <Zap size={10} />}
-                                                {item.platform === 'linkedin' && <Briefcase size={10} />}
-                                                {item.platform === 'instagram' && <LucideImage size={10} />}
-                                                {item.platform === 'tiktok' && <Video size={10} />}
-                                                {item.platform === 'all' && <Globe size={10} />}
-                                             </div>
-                                             <span className="text-[7px] font-bold uppercase tracking-[0.2em] opacity-40">{item.type}</span>
-                                          </div>
-                                          <div className="px-2 py-0.5 border border-black text-[7px] font-bold uppercase bg-black text-ivory">
-                                            {item.scheduledAt?.split(' - ')[1]}
-                                          </div>
-                                       </div>
-
-                                       <p className={`text-[10px] font-bold uppercase tracking-tight leading-tight cursor-pointer ${expandedId === item.id ? '' : 'line-clamp-3'}`} onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}>
-                                          {item.body}
-                                       </p>
-
-                                       {expandedId === item.id && (
-                                         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="pt-4 border-t border-black/10 mt-4 space-y-3">
-                                            <div className="flex gap-2">
-                                               {['08:00 AM', '12:00 PM', '04:00 PM', '07:00 PM'].map(time => (
-                                                 <button 
-                                                   key={time}
-                                                   onClick={() => setGeneratedContent(prev => prev.map(c => c.id === item.id ? { ...c, scheduledAt: `Day ${day} - ${time}` } : c))}
-                                                   className={`px-2 py-1 border border-black text-[6px] font-bold ${item.scheduledAt?.includes(time) ? 'bg-black text-ivory' : 'hover:bg-amber'}`}
-                                                 >
-                                                   {time}
-                                                 </button>
-                                               ))}
-                                            </div>
-                                         </motion.div>
-                                       )}
-                                    </div>
-                                  ))
-                                )}
-                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                {/* BOTTOM SUMMARY BAR */}
-                <div className="h-20 bg-ivory border-t-4 border-black px-8 flex items-center justify-between shrink-0 z-40 shadow-[0_-8px_20px_rgba(0,0,0,0.1)]">
-                   <div className="flex items-center gap-10">
-                      <div className="flex flex-col">
-                         <span className="text-[8px] font-bold uppercase tracking-widest opacity-40">Coverage</span>
-                         <div className="flex items-center gap-3 mt-1">
-                            {formData.platforms.map(p => (
-                               <div key={p} className="flex items-center gap-1">
-                                  <div className="w-2 h-2 rounded-full bg-deep-red" />
-                                  <span className="text-[9px] font-bold uppercase tracking-widest">{p}</span>
-                               </div>
-                            ))}
-                         </div>
-                      </div>
-                      <div className="h-8 w-[1px] bg-black/10" />
-                      <div className="flex flex-col">
-                         <span className="text-[8px] font-bold uppercase tracking-widest opacity-40">Timeline</span>
-                         <span className="text-[10px] font-bold uppercase tracking-widest mt-1">MAY 9 — MAY 15 (7 DAYS)</span>
-                      </div>
-                   </div>
-
-                   <div className="flex items-center gap-6">
-                      {generatedContent.some(c => !c.scheduledAt) && (
-                        <div className="flex items-center gap-2 text-deep-red">
-                           <AlertCircle size={14} />
-                           <span className="text-[8px] font-bold uppercase tracking-widest">{generatedContent.filter(c => !c.scheduledAt).length} PIECES NOT SCHEDULED</span>
-                        </div>
-                      )}
-                      <button 
-                        onClick={() => setStep(6)}
-                        className="bg-deep-red text-ivory px-16 py-5 font-bold uppercase text-sm tracking-[0.3em] hover:bg-black transition-all shadow-hard"
-                      >
-                        LAUNCH CAMPAIGN
-                      </button>
-                   </div>
-                </div>
-              </motion.div>
-            )}
-
-            {step === 6 && (
-              <motion.div key="step6" initial={{ opacity: 0, scale: 1.1 }} animate={{ opacity: 1, scale: 1 }} className="text-center space-y-12 py-12">
-                <div className="flex justify-center">
-                  <div className="w-32 h-32 bg-deep-red border-4 border-black shadow-hard flex items-center justify-center -rotate-6">
-                    <Sparkles size={60} className="text-ivory" />
-                  </div>
-                </div>
-                <div>
-                  <h2 className="text-6xl md:text-8xl font-display tracking-tighter uppercase leading-none">READY TO LAUNCH</h2>
-                  <p className="text-xs font-bold uppercase tracking-widest opacity-40 mt-4 leading-relaxed max-w-md mx-auto">
-                    The engine is primed. Launching will trigger auto-posting on your connected platforms.
-                  </p>
-                </div>
-                <div className="flex flex-col gap-4 max-w-sm mx-auto">
-                  <button onClick={handleLaunch} className="bg-deep-red text-ivory py-6 font-bold uppercase text-sm tracking-[0.3em] hover:bg-black transition-all shadow-hard-lg">
-                    LAUNCH CAMPAIGN
+                  <button 
+                    onClick={handleDeploy}
+                    disabled={isDeploying}
+                    className={`w-full sm:w-auto bg-deep-red text-ivory px-16 py-6 font-bold uppercase text-sm tracking-[0.3em] transition-all shadow-hard flex items-center justify-center gap-3 ${isDeploying ? 'opacity-50 cursor-not-allowed' : 'hover:bg-black'}`}
+                  >
+                    {isDeploying ? 'DEPLOYING...' : 'DEPLOY TO WORKSTATION'}
                   </button>
-                  <button onClick={onCancel} className="text-[10px] font-bold uppercase tracking-widest opacity-40 hover:opacity-100">Save as Draft</button>
                 </div>
               </motion.div>
             )}
@@ -2067,7 +1449,7 @@ function DeleteConfirmationModal({ onConfirm, onCancel }: { onConfirm: () => voi
       >
         <h3 className="text-3xl font-display uppercase tracking-tighter mb-4">Are you sure?</h3>
         <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-8 leading-relaxed">
-          Deleting this campaign will permanently remove all generated assets and scheduled posts. This action cannot be undone.
+          Deleting this workspace will permanently remove all generated assets and scheduled posts. This action cannot be undone.
         </p>
         <div className="flex flex-col gap-4">
           <button 
@@ -2080,7 +1462,7 @@ function DeleteConfirmationModal({ onConfirm, onCancel }: { onConfirm: () => voi
             onClick={onCancel}
             className="w-full py-4 border-2 border-black font-bold uppercase text-[10px] tracking-widest hover:bg-black hover:text-ivory transition-all shadow-hard"
           >
-            Keep Campaign
+            Keep Workspace
           </button>
         </div>
       </motion.div>
@@ -2092,12 +1474,12 @@ function CampaignDetailView({ campaign, onBack }: { campaign: Campaign, onBack: 
   return (
     <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <button onClick={onBack} className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] hover:text-deep-red transition-colors group">
-         <ArrowLeft size={14} className="group-hover:-translate-x-1 transition-transform" /> Back to campaigns
+         <ArrowLeft size={14} className="group-hover:-translate-x-1 transition-transform" /> Back to workspaces
       </button>
 
       <div className="flex flex-col lg:flex-row justify-between items-start gap-8">
         <div className="max-w-3xl">
-          <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-2">Campaign Details</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-2">Workspace Details</p>
           <h2 className="text-7xl font-display tracking-tighter leading-none uppercase mb-6">{campaign.name}</h2>
           <p className="text-lg font-bold uppercase tracking-tight leading-relaxed opacity-80">{campaign.brief}</p>
         </div>
@@ -2118,13 +1500,13 @@ function CampaignDetailView({ campaign, onBack }: { campaign: Campaign, onBack: 
            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {campaign.content.length === 0 ? (
                 <div className="col-span-full py-20 border-2 border-black border-dashed flex items-center justify-center text-[10px] font-bold uppercase opacity-20">
-                   No content generated for this campaign yet.
+                   No content generated for this workspace yet.
                 </div>
               ) : campaign.content.map(item => (
                 <div key={item.id} className="border-2 border-black p-6 bg-ivory shadow-hard">
                    <div className="flex justify-between items-center mb-4">
                       <span className="text-[8px] font-bold uppercase tracking-widest bg-black text-ivory px-2 py-0.5">{item.type}</span>
-                      <span className="text-[8px] font-bold uppercase opacity-40">{item.scheduledAt || 'Not Scheduled'}</span>
+                      <span className="text-[8px] font-bold uppercase opacity-40">PENDING DELIVERY</span>
                    </div>
                    <p className="text-[10px] font-bold uppercase tracking-tight leading-relaxed">{item.body}</p>
                 </div>
@@ -2133,18 +1515,6 @@ function CampaignDetailView({ campaign, onBack }: { campaign: Campaign, onBack: 
         </div>
 
         <div className="space-y-8 text-left">
-           <div className="bg-black text-ivory p-8 shadow-hard">
-              <div className="flex items-center justify-between mb-8">
-                 <h4 className="text-xl font-display uppercase tracking-widest">ANALYTICS</h4>
-                 <div className="px-2 py-1 bg-amber text-black text-[8px] font-bold uppercase">COMING SOON</div>
-              </div>
-              <div className="space-y-4 opacity-20">
-                 <div className="h-2 bg-ivory/20 w-3/4" />
-                 <div className="h-2 bg-ivory/20 w-1/2" />
-                 <div className="h-2 bg-ivory/20 w-2/3" />
-              </div>
-           </div>
-
            <div className="border-2 border-black p-8 bg-ivory shadow-hard space-y-4">
               <h4 className="text-xl font-display uppercase tracking-widest">TIMELINE</h4>
               <p className="text-[10px] font-bold uppercase tracking-widest">Duration: {campaign.duration} Days</p>
@@ -2222,13 +1592,13 @@ function CampaignsPage({
 
       {filteredCampaigns.length === 0 ? (
         <div className="py-32 border-4 border-black border-dashed flex flex-col items-center justify-center text-center animate-in fade-in duration-700">
-           <h3 className="text-6xl font-display uppercase tracking-widest opacity-10 mb-8">NO {filter} CAMPAIGNS</h3>
-           <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 max-w-sm mb-12">Your first campaign is just one brief away. Feed the brain.</p>
+           <h3 className="text-6xl font-display uppercase tracking-widest opacity-10 mb-8">NO {filter} WORKSPACES</h3>
+           <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 max-w-sm mb-12">Your first workspace is just one brief away. Feed the brain.</p>
            <button 
             onClick={onNewCampaign}
             className="bg-deep-red text-ivory px-10 py-5 font-bold uppercase text-[10px] tracking-widest shadow-hard hover:bg-black transition-all flex items-center gap-3"
            >
-             <Plus size={16} /> NEW CAMPAIGN
+             <Plus size={16} /> NEW WORKSPACE
            </button>
         </div>
       ) : (
@@ -2329,7 +1699,7 @@ function CampaignsPage({
                 <div className="w-12 h-12 border-2 border-black rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                    <Plus size={24} />
                 </div>
-                <h4 className="text-xl font-display uppercase tracking-widest">NEW CAMPAIGN SLOT</h4>
+                <h4 className="text-xl font-display uppercase tracking-widest">NEW WORKSPACE SLOT</h4>
                 <p className="text-[8px] font-bold uppercase tracking-widest mt-2">CREATE CONTENT PACK</p>
              </button>
           ))}
@@ -2421,7 +1791,7 @@ function AssetsPage({
              <button className="bg-black text-ivory px-10 py-5 font-bold uppercase text-[10px] tracking-widest shadow-hard hover:bg-deep-red transition-all">GO TO IMAGE LAB</button>
            )}
            {filter === 'VIDEOS' && (
-             <button className="bg-black text-ivory px-10 py-5 font-bold uppercase text-[10px] tracking-widest shadow-hard hover:bg-deep-red transition-all">CREATE A CAMPAIGN</button>
+             <button className="bg-black text-ivory px-10 py-5 font-bold uppercase text-[10px] tracking-widest shadow-hard hover:bg-deep-red transition-all">CREATE A WORKSPACE</button>
            )}
            {filter === 'UPLOADS' && (
              <button onClick={() => setShowUploadModal(true)} className="bg-black text-ivory px-10 py-5 font-bold uppercase text-[10px] tracking-widest shadow-hard hover:bg-deep-red transition-all">UPLOAD ASSET</button>
@@ -2487,7 +1857,7 @@ function AssetsPage({
                             onClick={() => { setMenuOpenId(null); }}
                             className="w-full text-left px-3 py-2 text-[8px] font-bold uppercase tracking-widest flex items-center gap-2 hover:bg-black/5"
                           >
-                            <Plus size={12} /> Add to campaign
+                            <Plus size={12} /> Add to workspace
                           </button>
                           <button 
                             onClick={() => setShowDeleteModal(asset.id)}
@@ -2688,8 +2058,8 @@ function AnalyticsPage({ campaigns, isLoading }: { campaigns: Campaign[], isLoad
     return (
       <div className="py-32 border-4 border-black border-dashed flex flex-col items-center justify-center text-center animate-in fade-in duration-700">
          <h3 className="text-6xl font-display uppercase tracking-widest opacity-10 mb-8">NO DATA YET</h3>
-         <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 max-w-sm mb-12">Launch your first campaign to start tracking performance metrics.</p>
-         <button className="bg-deep-red text-ivory px-10 py-5 font-bold uppercase text-[10px] tracking-widest shadow-hard hover:bg-black transition-all">CREATE CAMPAIGN</button>
+         <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 max-w-sm mb-12">Launch your first workspace to start tracking performance metrics.</p>
+         <button className="bg-deep-red text-ivory px-10 py-5 font-bold uppercase text-[10px] tracking-widest shadow-hard hover:bg-black transition-all">CREATE WORKSPACE</button>
       </div>
     );
   }
@@ -2800,13 +2170,13 @@ function AnalyticsPage({ campaigns, isLoading }: { campaigns: Campaign[], isLoad
        {/* TABLE */}
        <div className="bg-ivory border-2 border-black shadow-hard overflow-hidden text-left">
           <div className="p-8 border-b-2 border-black">
-             <h4 className="text-2xl font-display uppercase tracking-widest">CAMPAIGN BREAKDOWN</h4>
+             <h4 className="text-2xl font-display uppercase tracking-widest">WORKSPACE BREAKDOWN</h4>
           </div>
           <div className="overflow-x-auto">
              <table className="w-full text-left border-collapse">
                 <thead>
                    <tr className="bg-black text-ivory">
-                      <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest">Campaign Name</th>
+                      <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest">Workspace Name</th>
                       <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest">Platforms</th>
                       <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest">Pieces</th>
                       <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest">Reach</th>
@@ -2845,7 +2215,7 @@ function AnalyticsPage({ campaigns, isLoading }: { campaigns: Campaign[], isLoad
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
              <div className="space-y-2">
                 <h3 className="text-5xl font-display tracking-tighter uppercase leading-none">WHAT YOUR BRAIN LEARNED</h3>
-                <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">Vega gets smarter every campaign. Feed the machine.</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">Vega gets smarter every workspace. Feed the machine.</p>
              </div>
              <div className="flex flex-col items-end gap-2">
                 <span className="text-[8px] font-bold uppercase tracking-widest opacity-40">Brand Brain Confidence</span>
@@ -2872,7 +2242,7 @@ function AnalyticsPage({ campaigns, isLoading }: { campaigns: Campaign[], isLoad
              ))}
           </div>
           
-          <p className="text-[7px] font-bold uppercase tracking-widest opacity-20 text-center pt-8">Brain improves with every campaign you launch. Data integrity guaranteed.</p>
+          <p className="text-[7px] font-bold uppercase tracking-widest opacity-20 text-center pt-8">Brain improves with every workspace you launch. Data integrity guaranteed.</p>
        </div>
      </div>
   );
@@ -2888,7 +2258,7 @@ function SettingsPage({
   onboardingData: any, 
   setOnboardingData: (d: any) => void 
 }) {
-  const [activeTab, setActiveTab] = useState<'BRAIN' | 'ACCOUNT' | 'PLATFORMS' | 'NOTIFICATIONS' | 'DANGER'>('BRAIN');
+  const [activeTab, setActiveTab] = useState<'BRAIN' | 'ACCOUNT' | 'NOTIFICATIONS' | 'DANGER'>('BRAIN');
   const [showConnectModal, setShowConnectModal] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -2936,7 +2306,6 @@ function SettingsPage({
         {[
           { id: 'BRAIN', label: 'BRAND BRAIN', icon: Sparkles },
           { id: 'ACCOUNT', label: 'ACCOUNT', icon: User },
-          { id: 'PLATFORMS', label: 'PLATFORMS', icon: Zap },
           { id: 'NOTIFICATIONS', label: 'NOTIFICATIONS', icon: Bell },
           { id: 'DANGER', label: 'DANGER ZONE', icon: ShieldAlert, color: 'text-deep-red' },
         ].map(tab => (
@@ -3004,7 +2373,7 @@ function SettingsPage({
                <button onClick={handleSaveBrain} className="bg-deep-red text-ivory px-10 py-5 font-bold uppercase text-[10px] tracking-widest shadow-hard hover:bg-black transition-all">
                  SAVE BRAIN CHANGES
                </button>
-               <p className="text-[7px] font-bold uppercase tracking-widest opacity-20 mt-4 italic">Updating your brain improves future campaign accuracy instantly.</p>
+               <p className="text-[7px] font-bold uppercase tracking-widest opacity-20 mt-4 italic">Updating your brain improves future workspace accuracy instantly.</p>
              </div>
           </div>
         )}
@@ -3043,55 +2412,7 @@ function SettingsPage({
           </div>
         )}
 
-        {activeTab === 'PLATFORMS' && (
-          <div className="space-y-12 animate-in fade-in slide-in-from-left-4">
-             <div className="space-y-2">
-               <h3 className="text-4xl font-display uppercase tracking-tighter">CONNECTED PLATFORMS</h3>
-               <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">Connect your accounts for autonomous posting and real-time syncing.</p>
-             </div>
 
-             <div className="space-y-4">
-                {[
-                  { name: 'X / Twitter', icon: Zap, connected: true },
-                  { name: 'LinkedIn', icon: Briefcase, connected: false },
-                  { name: 'Instagram', icon: LucideImage, connected: false },
-                  { name: 'TikTok', icon: Video, connected: false },
-                  { name: 'Reddit', icon: Globe, connected: false },
-                ].map((p) => {
-                  return (
-                    <div key={p.name} className="flex items-center justify-between p-6 border-2 border-black bg-white shadow-hard relative overflow-hidden">
-                       <div className="flex items-center gap-6">
-                          <div className={`w-12 h-12 border-2 border-black flex items-center justify-center ${p.connected ? 'bg-amber' : 'bg-black/5'}`}>
-                             <p.icon size={20} />
-                          </div>
-                          <div className="flex flex-col">
-                             <span className="text-sm font-bold uppercase tracking-widest">{p.name}</span>
-                             <span className="text-[8px] font-bold uppercase opacity-40">{p.connected ? 'READ/WRITE ACCESS' : 'NOT CONNECTED'}</span>
-                          </div>
-                       </div>
-
-                       {p.connected ? (
-                          <div className="flex items-center gap-6">
-                             <div className="flex items-center gap-2 text-green-600">
-                                <CheckCircle2 size={14} />
-                                <span className="text-[8px] font-bold uppercase tracking-widest">CONNECTED</span>
-                             </div>
-                             <button className="text-[8px] font-bold uppercase tracking-widest underline hover:text-deep-red">Disconnect</button>
-                          </div>
-                       ) : (
-                          <button 
-                           onClick={() => setShowConnectModal(true)}
-                           className="bg-amber text-black px-6 py-2 border-2 border-black font-bold uppercase text-[10px] tracking-widest shadow-hard hover:bg-black hover:text-ivory transition-all"
-                          >
-                            CONNECT
-                          </button>
-                       )}
-                    </div>
-                  );
-                })}
-             </div>
-          </div>
-        )}
 
         {activeTab === 'NOTIFICATIONS' && (
           <div className="space-y-12 animate-in fade-in slide-in-from-left-4">
@@ -3102,9 +2423,7 @@ function SettingsPage({
 
              <div className="space-y-8">
                 {[
-                  { key: 'launched', label: 'Campaign Launched', desc: 'Alert when a new campaign enters active status' },
-                  { key: 'posted', label: 'Content Posted', desc: 'Real-time updates as Vega publishes your assets' },
-                  { key: 'weekly', label: 'Weekly Performance Report', desc: 'Data visualization summary delivered every Monday' },
+                  { key: 'launched', label: 'Workspace Launched', desc: 'Alert when a new workspace enters active status' },
                   { key: 'learning', label: 'Brain Learning Updates', desc: 'Notifications when your brand brain hits a confidence milestone' },
                   { key: 'updates', label: 'Product Updates', desc: 'New feature drops and Vega roadmap news' },
                 ].map(n => (
@@ -3159,7 +2478,7 @@ function SettingsPage({
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                    <div className="space-y-1">
                       <span className="text-sm font-bold uppercase tracking-widest">DELETE ACCOUNT</span>
-                      <p className="text-[8px] font-bold uppercase opacity-40">Permanently remove all data, campaigns and subscription</p>
+                      <p className="text-[8px] font-bold uppercase opacity-40">Permanently remove all data, workspaces and subscription</p>
                    </div>
                    <button 
                     onClick={() => setShowDeleteModal(true)}
@@ -3174,23 +2493,6 @@ function SettingsPage({
       </div>
 
       <AnimatePresence>
-        {/* CONNECT MODAL */}
-        {showConnectModal && (
-          <div className="fixed inset-0 z-[220] bg-black/80 flex items-center justify-center p-6 backdrop-blur-md">
-             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-ivory border-4 border-black p-12 max-w-lg w-full shadow-hard-lg text-center">
-                <h3 className="text-4xl font-display uppercase tracking-tighter mb-6">INTEGRATION QUEUE</h3>
-                <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-12 leading-relaxed">
-                   API sync endpoints are being stress-tested. Leave your email to join the waitlist for auto-posting access.
-                </p>
-                <div className="space-y-6">
-                  <input placeholder="ENTER EMAIL" className="w-full bg-transparent border-2 border-black p-5 font-bold uppercase text-[10px] tracking-widest focus:bg-black/5 focus:outline-none shadow-hard" />
-                  <button onClick={() => setShowConnectModal(false)} className="w-full py-5 bg-black text-ivory font-bold uppercase text-[10px] tracking-widest shadow-hard hover:bg-deep-red transition-all">JOIN WAITLIST</button>
-                  <button onClick={() => setShowConnectModal(false)} className="text-[8px] font-bold uppercase tracking-widest opacity-40 hover:opacity-100">Go Back</button>
-                </div>
-             </motion.div>
-          </div>
-        )}
-
         {/* RESET MODAL */}
         {showResetModal && (
           <div className="fixed inset-0 z-[220] bg-black/80 flex items-center justify-center p-6 backdrop-blur-sm">
@@ -3466,7 +2768,7 @@ function RemixPanel({ item, onClose, canRemix, onRemix }: { item: GalleryItem, o
                   </div>
                   <div className="flex gap-4">
                      <button className="flex-grow py-4 bg-black text-ivory font-bold uppercase text-[10px] tracking-widest shadow-hard hover:bg-amber hover:text-black">Save to Assets</button>
-                     <button className="flex-grow py-4 border-2 border-black font-bold uppercase text-[10px] tracking-widest shadow-hard hover:bg-black hover:text-ivory">Add to Campaign</button>
+                     <button className="flex-grow py-4 border-2 border-black font-bold uppercase text-[10px] tracking-widest shadow-hard hover:bg-black hover:text-ivory">Add to Workspace</button>
                   </div>
                </motion.div>
              )}
@@ -3593,7 +2895,9 @@ function DashboardPlaceholder({
   onboardingData, 
   setOnboardingData,
   onNewCampaign, 
-  onLogout 
+  onLogout,
+  activeTab: passedActiveTab,
+  setActiveTab: passedSetActiveTab
 }: { 
   campaigns: Campaign[];
   setCampaigns: (c: Campaign[] | ((prev: Campaign[]) => Campaign[])) => void;
@@ -3607,9 +2911,13 @@ function DashboardPlaceholder({
   setOnboardingData: (d: any) => void;
   onNewCampaign: () => void;
   onLogout: () => void;
+  activeTab?: string;
+  setActiveTab?: (tab: string) => void;
 }) {
   const [isFetching, setIsFetching] = useState(false);
-  const [activeTab, setActiveTab] = useState('Dashboard');
+  const [localActiveTab, setLocalActiveTab] = useState('Dashboard');
+  const activeTab = passedActiveTab ?? localActiveTab;
+  const setActiveTab = passedSetActiveTab ?? setLocalActiveTab;
   const [labDirection, setLabDirection] = useState('');
   const [labResult, setLabResult] = useState<string | null>(null);
   const [isGeneratingLab, setIsGeneratingLab] = useState(false);
@@ -3641,14 +2949,14 @@ function DashboardPlaceholder({
 
           return {
             id: doc.id,
-            name: data.campaignInput?.substring(0, 30).toUpperCase() || "UNTITLED CAMPAIGN",
+            name: data.name || data.campaignInput?.substring(0, 30).toUpperCase() || "UNTITLED WORKSPACE",
             platforms: ['x', 'linkedin', 'tiktok', 'email'],
-            status: 'active',
+            status: data.status || 'active',
             progress: 100,
             contentCount: content.length,
-            duration: '1',
+            duration: data.duration || '1',
             createdAt: data.createdAt?.toDate().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).toUpperCase() || 'RECENT',
-            brief: data.campaignInput || '',
+            brief: data.brief || data.campaignInput || '',
             content: content
           };
         });
@@ -3672,8 +2980,7 @@ function DashboardPlaceholder({
 
   const stats = [
     { label: 'Total Content', value: campaigns.reduce((acc, c) => acc + c.contentCount, 0).toString() },
-    { label: 'Active Campaigns', value: campaigns.filter(c => c.status === 'active').length.toString() },
-    { label: 'Next Post', value: '14:30 PM' }
+    { label: 'Active Workspaces', value: campaigns.filter(c => c.status === 'active').length.toString() }
   ];
 
   const handleGenerateLab = () => {
@@ -3692,18 +2999,15 @@ function DashboardPlaceholder({
            <img src="/logo.png" alt="VEGA AI" className="h-[250px] w-[200px] pl-0 -ml-[35px] object-contain shrink-0" />
         </div>
         <nav className="flex-grow py-8 flex flex-col overflow-y-auto">
-          {['Dashboard', 'Campaigns', 'Inspiration', 'Image Lab', 'Assets', 'Analytics', 'Settings'].map(it => (
+          {['Dashboard', 'Workspaces', 'Workstation', 'Settings'].map(it => (
             <button 
               key={it} 
               onClick={() => setActiveTab(it)}
               className={`w-full text-left p-6 font-bold uppercase text-[10px] tracking-widest transition-colors border-b border-black/5 last:border-0 flex items-center gap-4 ${activeTab === it ? 'bg-amber' : 'hover:bg-black/5'}`}
             >
               {it === 'Dashboard' && <Layout size={16} />}
-              {it === 'Campaigns' && <Briefcase size={16} />}
-              {it === 'Inspiration' && <Library size={16} />}
-              {it === 'Image Lab' && <Sparkles size={16} />}
-              {it === 'Assets' && <Palette size={16} />}
-              {it === 'Analytics' && <BarChart2 size={16} />}
+              {it === 'Workspaces' && <Briefcase size={16} />}
+              {it === 'Workstation' && <Sparkles size={16} />}
               {it === 'Settings' && <Settings size={16} />}
               {it}
             </button>
@@ -3727,32 +3031,26 @@ function DashboardPlaceholder({
               {onboardingData?.brandName || 'VEGA AI'} / {activeTab}
             </p>
             <h1 className="text-7xl lg:text-8xl font-display tracking-tighter leading-none uppercase">
-                {activeTab === 'Image Lab' ? 'IMAGE LAB' : 
-                 activeTab === 'Campaigns' ? 'YOUR CAMPAIGNS' :
-                 activeTab === 'Inspiration' ? 'INSPIRATION GALLERY' :
-                 activeTab === 'Assets' ? 'ASSET LIBRARY' :
-                 activeTab === 'Analytics' ? 'ANALYTICS' :
+                {activeTab === 'Workspaces' ? 'YOUR WORKSPACES' :
+                 activeTab === 'Workstation' ? 'WORKSTATION' :
                  activeTab === 'Settings' ? 'SETTINGS' :
                  'COMMAND CENTER'}
             </h1>
           </div>
-          {activeTab !== 'Image Lab' && activeTab !== 'Assets' && activeTab !== 'Inspiration' && activeTab !== 'Analytics' && activeTab !== 'Settings' && (
+          {(activeTab === 'Dashboard' || activeTab === 'Workspaces') && (
             <button 
                 onClick={onNewCampaign}
                 className="bg-deep-red text-ivory px-8 py-5 font-bold uppercase text-xs tracking-widest shadow-hard hover:bg-black transition-all flex items-center gap-3 group"
             >
                 <Plus size={18} className="group-hover:rotate-90 transition-transform" />
-                New Campaign
+                New Workspace
             </button>
-          )}
-          {(activeTab === 'Assets' || activeTab === 'Analytics' || activeTab === 'Settings') && (
-            <div className="hidden" /> 
           )}
         </header>
 
         {activeTab === 'Dashboard' && (
           <>
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 mb-12">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
               {stats.map((s, i) => (
                 <div key={i} className="border-2 border-black p-6 shadow-hard bg-ivory">
                   <p className="text-[8px] font-bold uppercase tracking-widest mb-2 opacity-50">{s.label}</p>
@@ -3778,7 +3076,7 @@ function DashboardPlaceholder({
                      <div className="w-20 h-20 bg-amber border-2 border-black shadow-[4px_4px_0px_#000] flex items-center justify-center mb-8 rotate-12">
                        <Send className="text-black" />
                      </div>
-                     <h3 className="text-4xl font-display mb-4">NO ACTIVE CAMPAIGNS</h3>
+                     <h3 className="text-4xl font-display mb-4">NO ACTIVE WORKSPACES</h3>
                      <p className="text-sm font-bold uppercase tracking-widest text-black/40 max-w-sm leading-relaxed px-4 text-center">
                        You haven't launched anything yet. Your AI brain is waiting for the first direction.
                      </p>
@@ -3786,7 +3084,7 @@ function DashboardPlaceholder({
                       onClick={onNewCampaign}
                       className="mt-8 border-2 border-black px-6 py-3 font-bold uppercase text-[10px] tracking-widest hover:bg-black hover:text-ivory transition-all"
                      >
-                       Start Your First Campaign
+                       Start Your First Workspace
                      </button>
                   </div>
                 ) : (
@@ -3808,7 +3106,7 @@ function DashboardPlaceholder({
                             <span>{c.duration === 'unlimited' ? 'UNLIMITED' : `${c.duration} DAYS`}</span>
                           </div>
                         </div>
-                        <button onClick={() => setActiveTab('Campaigns')} className="mt-8 w-full border border-black p-3 font-bold uppercase text-[8px] tracking-widest hover:bg-amber transition-colors">
+                        <button onClick={() => setActiveTab('Workspaces')} className="mt-8 w-full border border-black p-3 font-bold uppercase text-[8px] tracking-widest hover:bg-amber transition-colors">
                           View Details
                         </button>
                       </div>
@@ -3833,9 +3131,9 @@ function DashboardPlaceholder({
                    <h4 className="text-xl font-display mb-4">QUICK TIPS</h4>
                    <ul className="space-y-6">
                      {[
-                       "Post consistently for 7 days to wake up the engine.",
-                       "Try adding a visual asset to your brand brain.",
-                       "Connect your LinkedIn to enable auto-scheduling."
+                       "Deploy your first workspace and your agents activate immediately.",
+                       "Approve content fast — your Scout is already watching competitors.",
+                       "Connect Discord or Telegram in Settings to receive your content."
                      ].map((tip, it) => (
                        <li key={it} className="flex gap-4 text-[10px] font-bold uppercase tracking-tight leading-snug">
                          <span className="text-deep-red text-lg leading-none shrink-0 italic font-serif">†</span>
@@ -3849,7 +3147,7 @@ function DashboardPlaceholder({
           </>
         )}
 
-        {activeTab === 'Campaigns' && (
+        {activeTab === 'Workspaces' && (
           <CampaignsPage 
             campaigns={campaigns} 
             onNewCampaign={onNewCampaign} 
@@ -3858,27 +3156,16 @@ function DashboardPlaceholder({
           />
         )}
 
-        {activeTab === 'Assets' && (
-          <AssetsPage 
-            assets={assets} 
-            onUpdateAssets={setAssets} 
-          />
-        )}
-
-        {activeTab === 'Inspiration' && (
-          <GalleryPage 
-            gallery={gallery}
-            remixesToday={remixesToday}
-            onUpdateGallery={setGallery}
-            onRemix={() => setRemixesToday(prev => prev + 1)}
-          />
-        )}
-
-        {activeTab === 'Analytics' && (
-          <AnalyticsPage 
-            campaigns={campaigns}
-            isLoading={isFetching}
-          />
+        {activeTab === 'Workstation' && (
+          <div className="border-2 border-black p-12 bg-ivory shadow-hard min-h-[500px] flex flex-col items-center justify-center text-center">
+             <div className="w-20 h-20 bg-amber border-2 border-black shadow-[4px_4px_0px_#000] flex items-center justify-center mb-8 rotate-3">
+               <Sparkles className="text-black animate-pulse" size={32} />
+             </div>
+             <h3 className="text-4xl font-display mb-4 text-black animate-pulse">AGENT WORKSTATION</h3>
+             <p className="text-sm font-bold uppercase tracking-widest text-black/40 max-w-sm leading-relaxed px-4 text-center">
+               Your agents (Brand Agent, Content Agent, and Scout Agent) are currently in synchronization. Approve and review your raw brand ideas right here.
+             </p>
+          </div>
         )}
 
         {activeTab === 'Settings' && (
@@ -3886,85 +3173,6 @@ function DashboardPlaceholder({
             onboardingData={onboardingData}
             setOnboardingData={setOnboardingData}
           />
-        )}
-
-        {activeTab === 'Image Lab' && (
-          <div className="max-w-4xl space-y-12 text-left">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-               <div className="space-y-8">
-                  <div className="bg-ivory border-2 border-black p-8 shadow-hard">
-                     <h3 className="text-xl font-display mb-6">STANDALONE GENERATOR</h3>
-                     <p className="text-[10px] font-bold uppercase tracking-widest opacity-50 mb-8 leading-relaxed">
-                        Generate high-fidelity brand assets outside of your active campaigns.
-                     </p>
-                     
-                         <div className="space-y-6">
-                            <div>
-                               <label className="block text-[8px] font-bold uppercase tracking-[0.2em] mb-3 opacity-40">Creative Direction</label>
-                               <textarea 
-                                 rows={4}
-                                 value={labDirection}
-                                 onChange={(e) => setLabDirection(e.target.value)}
-                                 placeholder="E.G. BRUTALIST POSTER OF A NEON MOUNTAIN RANGE..."
-                                 className="w-full bg-transparent border-2 border-black p-5 font-bold uppercase text-[10px] tracking-widest focus:bg-black/5 focus:outline-none shadow-hard resize-none"
-                               />
-                            </div>
-                            
-                            <div className="flex items-center justify-end pt-4">
-                               <button 
-                                 onClick={handleGenerateLab}
-                                 disabled={isGeneratingLab || !labDirection}
-                                 className={`px-8 py-4 font-bold uppercase text-xs tracking-widest shadow-hard flex items-center gap-3 transition-all ${isGeneratingLab || !labDirection ? 'bg-black/10 cursor-not-allowed text-black/40' : 'bg-deep-red text-ivory hover:bg-black'}`}
-                               >
-                                  {isGeneratingLab ? <RefreshCcw size={16} className="animate-spin" /> : <LucideImage size={16} />}
-                                  {isGeneratingLab ? 'RENDERING...' : 'GENERATE'}
-                               </button>
-                            </div>
-                         </div>
-                  </div>
-               </div>
-
-               <div className="bg-ivory border-2 border-black h-[500px] shadow-hard-lg flex items-center justify-center relative overflow-hidden group">
-                  {labResult ? (
-                     <>
-                        <img src={labResult} alt="Generated result" className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700" />
-                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-4 p-8 text-center">
-                           <p className="text-ivory text-xs font-bold uppercase tracking-[0.2em] leading-relaxed">
-                              Rendering complete. High-fidelity asset added to your vault.
-                           </p>
-                           <div className="flex gap-4">
-                              <button className="bg-ivory text-black px-6 py-2 font-bold uppercase text-[8px] tracking-widest hover:bg-amber transition-colors">Download</button>
-                              <button className="border border-ivory text-ivory px-6 py-2 font-bold uppercase text-[8px] tracking-widest hover:bg-ivory hover:text-black transition-colors">Save to Brand</button>
-                           </div>
-                        </div>
-                     </>
-                  ) : (
-                     <div className="flex flex-col items-center text-center p-8 opacity-20">
-                        <LucideImage size={60} strokeWidth={1} />
-                        <p className="text-[8px] font-bold uppercase tracking-[0.3em] mt-6">Awaiting Input...</p>
-                     </div>
-                  )}
-                  
-                  {isGeneratingLab && (
-                     <div className="absolute inset-0 bg-black/90 flex flex-col items-center justify-center">
-                        <div className="w-32 h-1 bg-ivory/10 relative overflow-hidden">
-                           <div className="absolute inset-0 bg-amber animate-progress" />
-                        </div>
-                        <p className="text-ivory mt-4 text-[8px] font-bold uppercase tracking-[0.5em] animate-pulse">Synthesizing Pixels</p>
-                     </div>
-                  )}
-               </div>
-            </div>
-
-            <div className="grid grid-cols-4 md:grid-cols-6 gap-4">
-               {[1, 2, 3, 4, 5, 6].map(i => (
-                  <div key={i} className="aspect-square border border-black/10 bg-ivory shadow-hard hover:scale-105 transition-transform cursor-pointer overflow-hidden relative group">
-                     {i === 1 && labResult && <img src={labResult} className="w-full h-full object-cover" />}
-                     <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </div>
-               ))}
-            </div>
-          </div>
         )}
       </main>
 

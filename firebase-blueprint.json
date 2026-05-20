@@ -24,17 +24,6 @@
         "contentPillars": { "type": "array", "items": { "type": "string" } }
       },
       "required": ["brandName", "brandDescription", "tone", "targetAudience", "contentPillars"]
-    },
-    "Campaign": {
-      "title": "Campaign",
-      "description": "A generated marketing campaign.",
-      "type": "object",
-      "properties": {
-        "contentPack": { "type": "object" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "campaignInput": { "type": "string" }
-      },
-      "required": ["contentPack", "createdAt", "campaignInput"]
     }
   },
   "firestore": {
@@ -45,10 +34,6 @@
     "/users/{userId}/brandBrain/current": {
       "schema": "BrandBrain",
       "description": "Detailed brand strategy data."
-    },
-    "/users/{userId}/campaigns/{campaignId}": {
-      "schema": "Campaign",
-      "description": "Individual campaigns created by the user."
     }
   }
 }
