@@ -1092,7 +1092,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
                     type="button"
                     onClick={() => {
                       if (auth.currentUser) {
-                        const url = `https://discord.com/oauth2/authorize?client_id=1506400226586394624&redirect_uri=https%3A%2F%2Fphantom-subsequently-steel-portable.trycloudflare.com%2Fauth%2Fdiscord%2Fcallback&response_type=code&scope=identify&state=${auth.currentUser.uid}`;
+                        const url = `https://discord.com/oauth2/authorize?client_id=1506400226586394624&redirect_uri=https%3A%2F%2Fdod-paying-discipline-items.trycloudflare.com%2Fauth%2Fdiscord%2Fcallback&response_type=code&scope=identify&state=${auth.currentUser.uid}`;
                         window.open(url, '_blank');
                       }
                     }}
