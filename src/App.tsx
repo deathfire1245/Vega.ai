@@ -1240,7 +1240,10 @@ function NewCampaignFlow({ onCancel, onComplete, setView, gallery }: { onCancel:
         const bdSnap = await getDoc(bdRef);
         if (bdSnap.exists()) {
           const bdData = bdSnap.data();
-          discordUserId = bdData?.discordUserId || bdData?.discordUsername || "";
+          discordUserId = bdData?.discordUserId || "";
+          if (!bdData?.discordUserId) {
+            console.warn("Warning: discordUserId not found in brandBrain document");
+          }
         }
       } catch (bdErr) {
         console.warn("Could not read brandBrain for Discord user:", bdErr);
