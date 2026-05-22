@@ -1249,7 +1249,7 @@ function NewCampaignFlow({ onCancel, onComplete, setView, gallery }: { onCancel:
       // 3. Trigger endpoint if discordUserId is present
       if (discordUserId) {
         try {
-          await fetch("https://phantom-subsequently-steel-portable.trycloudflare.com/deploy", {
+          await fetch("https://dod-paying-discipline-items.trycloudflare.com/deploy", {
             method: "POST",
             headers: {
               "Content-Type": "application/json"
