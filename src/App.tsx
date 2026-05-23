@@ -603,7 +603,6 @@ function SignUpView({ onBack, onSuccess, initialMode = 'signup' }: { onBack: () 
             userId: user.uid,
             email: user.email,
             displayName: fullName || '',
-            brandName: brandName || '',
             createdAt: serverTimestamp(),
           });
         } catch (err) {
