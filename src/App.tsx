@@ -813,7 +813,6 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
   const [step, setStep] = useState(1);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [discordUsername, setDiscordUsername] = useState('');
   const [data, setData] = useState({
     brandName: '',
     tagline: '',
@@ -843,10 +842,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
         brandDescription: data.description,
         tone: [data.tone],
         targetAudience: data.audience,
-        contentPillars: [], // Not currently in onboarding UI, so default to empty
-        discordConnected: true,
-        discordUserId: discordUsername,
-        discordUsername: discordUsername
+        contentPillars: [] // Not currently in onboarding UI, so default to empty
       }, { merge: true });
       onComplete(data);
     } catch (err: any) {
@@ -1099,16 +1095,6 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
                   >
                     CONNECT DISCORD
                   </button>
-                  <div className="space-y-3">
-                    <label className="block text-xs font-bold uppercase tracking-widest opacity-60">Discord Username Name</label>
-                    <input 
-                      type="text" 
-                      value={discordUsername}
-                      onChange={e => setDiscordUsername(e.target.value)}
-                      placeholder="E.G. USERNAME#0000 OR USERNAME"
-                      className="w-full bg-ivory border-2 border-black p-6 font-bold uppercase text-sm tracking-widest focus:bg-white focus:outline-none shadow-hard"
-                    />
-                  </div>
                 </div>
               </div>
             )}
