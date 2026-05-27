@@ -813,6 +813,8 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
   const [step, setStep] = useState(1);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [deliveryChannel, setDeliveryChannel] = useState<'discord' | 'telegram' | 'both'>('discord');
+  const [telegramChatId, setTelegramChatId] = useState('');
   const [data, setData] = useState({
     brandName: '',
     tagline: '',
@@ -842,7 +844,9 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
         brandDescription: data.description,
         tone: [data.tone],
         targetAudience: data.audience,
-        contentPillars: [] // Not currently in onboarding UI, so default to empty
+        contentPillars: [], // Not currently in onboarding UI, so default to empty
+        deliveryChannel: deliveryChannel,
+        telegramChatId: telegramChatId
       }, { merge: true });
       onComplete(data);
     } catch (err: any) {
@@ -1078,24 +1082,78 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
 
             {step === 7 && (
               <div className="space-y-12">
-                <h2 className="text-6xl md:text-8xl font-display tracking-tighter leading-[0.85]">CONNECT DISCORD</h2>
-                <div className="space-y-8">
+                <h2 className="text-6xl md:text-8xl font-display tracking-tighter leading-[0.85]">DELIVERY CHANNELS</h2>
+                
+                {/* Delivery Channel Selector */}
+                <div className="space-y-6">
                   <p className="text-xs font-bold uppercase tracking-widest opacity-60">
-                    Connect your Discord account to receive generated workspace assets and updates.
+                    Choose how to receive your generated content
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (auth.currentUser) {
-                        const url = `https://discord.com/oauth2/authorize?client_id=1506400226586394624&redirect_uri=https%3A%2F%2Fdod-paying-discipline-items.trycloudflare.com%2Fauth%2Fdiscord%2Fcallback&response_type=code&scope=identify&state=${auth.currentUser.uid}`;
-                        window.open(url, '_blank');
-                      }
-                    }}
-                    className="w-full bg-black text-ivory p-6 font-bold uppercase text-sm tracking-widest hover:bg-deep-red transition-all shadow-hard"
-                  >
-                    CONNECT DISCORD
-                  </button>
+                  <div className="flex gap-4">
+                    {(['discord', 'telegram', 'both'] as const).map((channel) => (
+                      <button
+                        key={channel}
+                        type="button"
+                        onClick={() => setDeliveryChannel(channel)}
+                        className={`flex-1 px-4 py-3 font-bold uppercase text-xs tracking-widest transition-all ${
+                          deliveryChannel === channel
+                            ? 'bg-deep-red text-ivory shadow-hard'
+                            : 'bg-black/10 text-black hover:bg-black/20'
+                        }`}
+                      >
+                        {channel === 'discord' && 'Discord'}
+                        {channel === 'telegram' && 'Telegram'}
+                        {channel === 'both' && 'Both'}
+                      </button>
+                    ))}
+                  </div>
                 </div>
+                
+                {/* Discord Section */}
+                {(deliveryChannel === 'discord' || deliveryChannel === 'both') && (
+                  <div className="space-y-8 pt-8 border-t-2 border-black">
+                    <div>
+                      <h3 className="text-2xl font-display tracking-tighter mb-4">CONNECT DISCORD</h3>
+                      <p className="text-xs font-bold uppercase tracking-widest opacity-60 mb-6">
+                        Connect your Discord account to receive workspace assets and updates.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (auth.currentUser) {
+                            const url = `https://discord.com/oauth2/authorize?client_id=1506400226586394624&redirect_uri=https%3A%2F%2Fdod-paying-discipline-items.trycloudflare.com%2Fauth%2Fdiscord%2Fcallback&response_type=code&scope=identify&state=${auth.currentUser.uid}`;
+                            window.open(url, '_blank');
+                          }
+                        }}
+                        className="w-full bg-black text-ivory p-6 font-bold uppercase text-sm tracking-widest hover:bg-deep-red transition-all shadow-hard"
+                      >
+                        CONNECT DISCORD
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Telegram Section */}
+                {(deliveryChannel === 'telegram' || deliveryChannel === 'both') && (
+                  <div className="space-y-8 pt-8 border-t-2 border-black">
+                    <div>
+                      <h3 className="text-2xl font-display tracking-tighter mb-4">CONNECT TELEGRAM</h3>
+                      <p className="text-xs font-bold uppercase tracking-widest opacity-60 mb-6">
+                        Enter your Telegram Chat ID to receive content delivery.
+                      </p>
+                      <input
+                        type="text"
+                        placeholder="Enter your Telegram Chat ID"
+                        value={telegramChatId}
+                        onChange={(e) => setTelegramChatId(e.target.value)}
+                        className="w-full px-4 py-3 border-2 border-black bg-ivory text-black placeholder-black/50 font-bold uppercase text-sm tracking-widest focus:outline-none focus:bg-amber"
+                      />
+                      <p className="text-xs font-bold uppercase tracking-widest opacity-60 mt-3">
+                        Don't know your Chat ID? Message @Vegaai_official_agent_bot on Telegram and send /start — it will reply with your Chat ID.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1218,14 +1276,18 @@ function NewCampaignFlow({ onCancel, onComplete, setView, gallery }: { onCancel:
         deployedAt: serverTimestamp()
       });
 
-      // 2. Fetch discordUserId from users/{uid}/brandBrain/current
+      // 2. Fetch discordUserId, telegramChatId, and deliveryChannel from users/{uid}/brandBrain/current
       let discordUserId = "";
+      let telegramChatId = "";
+      let deliveryChannel: 'discord' | 'telegram' | 'both' = 'discord';
       try {
         const bdRef = doc(db, "users", uid, "brandBrain", "current");
         const bdSnap = await getDoc(bdRef);
         if (bdSnap.exists()) {
           const bdData = bdSnap.data();
           discordUserId = bdData?.discordUserId || "";
+          telegramChatId = bdData?.telegramChatId || "";
+          deliveryChannel = bdData?.deliveryChannel || 'discord';
           if (!bdData?.discordUserId) {
             console.warn("Warning: discordUserId not found in brandBrain document");
           }
@@ -1234,8 +1296,8 @@ function NewCampaignFlow({ onCancel, onComplete, setView, gallery }: { onCancel:
         console.warn("Could not read brandBrain for Discord user:", bdErr);
       }
 
-      // 3. Trigger endpoint if discordUserId is present
-      if (discordUserId) {
+      // 3. Trigger endpoint if credentials are present
+      if (discordUserId || telegramChatId) {
         try {
           await fetch("https://dod-paying-discipline-items.trycloudflare.com/deploy", {
             method: "POST",
@@ -1244,14 +1306,16 @@ function NewCampaignFlow({ onCancel, onComplete, setView, gallery }: { onCancel:
             },
             body: JSON.stringify({
               userId: uid,
-              discordUserId: discordUserId
+              discordUserId: discordUserId,
+              telegramChatId: telegramChatId,
+              deliveryChannel: deliveryChannel
             })
           });
         } catch (fetchErr) {
           console.warn("Deploy endpoint request failed or timed out silently:", fetchErr);
         }
       } else {
-        console.warn("Warning: discordUserId missing or empty. Skipping deploy POST.");
+        console.warn("Warning: No delivery credentials (discord or telegram) found. Skipping deploy POST.");
       }
 
       // 4. Complete flow locally and redirect
