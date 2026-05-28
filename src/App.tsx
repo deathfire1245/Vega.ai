@@ -814,7 +814,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [deliveryChannel, setDeliveryChannel] = useState<'discord' | 'telegram' | 'both'>('discord');
-  const [telegramChatId, setTelegramChatId] = useState('');
+  const [telegramConnected, setTelegramConnected] = useState(false);
   const [data, setData] = useState({
     brandName: '',
     tagline: '',
@@ -845,8 +845,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
         tone: [data.tone],
         targetAudience: data.audience,
         contentPillars: [], // Not currently in onboarding UI, so default to empty
-        deliveryChannel: deliveryChannel,
-        telegramChatId: telegramChatId
+        deliveryChannel: deliveryChannel
       }, { merge: true });
       onComplete(data);
     } catch (err: any) {
@@ -864,6 +863,36 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
     { id: 'funny', label: 'Witty & Fun' },
     { id: 'professional', label: 'Professional' }
   ];
+
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    if (step !== 7) return;
+    if (deliveryChannel !== 'telegram' && deliveryChannel !== 'both') return;
+    if (telegramConnected) return;
+
+    let intervalId: ReturnType<typeof setInterval>;
+
+    const checkTelegramConnection = async () => {
+      try {
+        const bdRef = doc(db, "users", uid, "brandBrain", "current");
+        const bdSnap = await getDoc(bdRef);
+        if (bdSnap.exists()) {
+          const bdData = bdSnap.data();
+          if (bdData?.telegramConnected === true) {
+            setTelegramConnected(true);
+          }
+        }
+      } catch (pollErr) {
+        console.warn("Telegram connection polling failed:", pollErr);
+      }
+    };
+
+    checkTelegramConnection();
+    intervalId = setInterval(checkTelegramConnection, 2000);
+
+    return () => clearInterval(intervalId);
+  }, [deliveryChannel, step, telegramConnected]);
 
   const platforms = [
     { id: 'x', label: 'Twitter / X' },
@@ -1139,17 +1168,28 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
                     <div>
                       <h3 className="text-2xl font-display tracking-tighter mb-4">CONNECT TELEGRAM</h3>
                       <p className="text-xs font-bold uppercase tracking-widest opacity-60 mb-6">
-                        Enter your Telegram Chat ID to receive content delivery.
+                        Connect your Telegram bot to receive content delivery.
                       </p>
-                      <input
-                        type="text"
-                        placeholder="Enter your Telegram Chat ID"
-                        value={telegramChatId}
-                        onChange={(e) => setTelegramChatId(e.target.value)}
-                        className="w-full px-4 py-3 border-2 border-black bg-ivory text-black placeholder-black/50 font-bold uppercase text-sm tracking-widest focus:outline-none focus:bg-amber"
-                      />
+                      {telegramConnected ? (
+                        <div className="w-full bg-black text-ivory p-6 font-bold uppercase text-sm tracking-widest shadow-hard text-center">
+                          ✅ TELEGRAM CONNECTED
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const uid = auth.currentUser?.uid;
+                            if (!uid) return;
+                            const url = `https://t.me/Vegaai_official_agent_bot?start=${uid}`;
+                            window.open(url, '_blank');
+                          }}
+                          className="w-full bg-black text-ivory p-6 font-bold uppercase text-sm tracking-widest hover:bg-deep-red transition-all shadow-hard"
+                        >
+                          CONNECT TELEGRAM
+                        </button>
+                      )}
                       <p className="text-xs font-bold uppercase tracking-widest opacity-60 mt-3">
-                        Don't know your Chat ID? Message @Vegaai_official_agent_bot on Telegram and send /start — it will reply with your Chat ID.
+                        Click to open the Vega AI Telegram bot and connect your account. Your chat will be saved automatically.
                       </p>
                     </div>
                   </div>

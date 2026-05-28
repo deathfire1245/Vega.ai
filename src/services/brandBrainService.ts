@@ -12,6 +12,7 @@ export interface BrandBrain {
   discordUsername?: string;
   deliveryChannel?: 'discord' | 'telegram' | 'both';
   telegramChatId?: string;
+  telegramConnected?: boolean;
 }
 
 /**
