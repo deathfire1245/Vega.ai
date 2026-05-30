@@ -52,6 +52,8 @@ interface Campaign {
   progress: number;
   contentCount: number;
   duration: string;
+  durationDays?: number;
+  expiresAt?: any;
   createdAt: string;
   brief: string;
   content: CampaignContent[];
@@ -1288,6 +1290,27 @@ function LoadingScreen() {
   );
 }
 
+// Helper functions for campaign expiry
+function isCampaignExpired(campaign: Campaign): boolean {
+  if (!campaign.expiresAt) return false;
+  const expiryTime = campaign.expiresAt instanceof Date ? campaign.expiresAt.getTime() : campaign.expiresAt.toMillis?.() || 0;
+  return expiryTime < Date.now();
+}
+
+function formatExpiryDate(campaign: Campaign): string {
+  if (!campaign.expiresAt) return '';
+  const expiryTime = campaign.expiresAt instanceof Date ? campaign.expiresAt : new Date(campaign.expiresAt.toMillis?.() || 0);
+  
+  if (isCampaignExpired(campaign)) {
+    return 'Expired';
+  }
+  
+  // Format as "Expires on May 30"
+  const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
+  const formattedDate = expiryTime.toLocaleDateString('en-US', options);
+  return `Expires on ${formattedDate}`;
+}
+
 function NewCampaignFlow({ onCancel, onComplete, setView, gallery }: { onCancel: () => void, onComplete: (c: Campaign) => void, setView: (v: AppView) => void, gallery: GalleryItem[] }) {
   const { brandBrain } = useBrandBrain();
   const [step, setStep] = useState(1);
@@ -1306,11 +1329,20 @@ function NewCampaignFlow({ onCancel, onComplete, setView, gallery }: { onCancel:
     const uid = auth.currentUser.uid;
 
     try {
+      // Parse durationDays from duration string (e.g., "7 days" -> 7)
+      const durationDays = parseInt(formData.duration.split(' ')[0]);
+      
+      // Calculate expiresAt: now + durationDays in milliseconds
+      const now = new Date();
+      const expiresAtDate = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+      
       // 1. Write to Firestore: users/{uid}/campaigns
       const docRef = await addDoc(collection(db, "users", uid, "campaigns"), {
         name: formData.name,
         brief: formData.brief,
         duration: formData.duration,
+        durationDays: durationDays,
+        expiresAt: expiresAtDate,
         status: 'active',
         createdAt: serverTimestamp(),
         deployedAt: serverTimestamp()
@@ -1438,7 +1470,6 @@ function NewCampaignFlow({ onCancel, onComplete, setView, gallery }: { onCancel:
                         <option value="7 days">7 days</option>
                         <option value="14 days">14 days</option>
                         <option value="30 days">30 days</option>
-                        <option value="Unlimited">Unlimited</option>
                       </select>
                       <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-6 text-black">
                         <ChevronRight size={16} className="rotate-90" />
@@ -1696,7 +1727,7 @@ function CampaignsPage({
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 text-left">
           {filteredCampaigns.map(campaign => (
-            <div key={campaign.id} className="bg-ivory border-2 border-black p-8 shadow-hard flex flex-col relative group">
+            <div key={campaign.id} className={`bg-ivory border-2 border-black p-8 shadow-hard flex flex-col relative group ${isCampaignExpired(campaign) ? 'opacity-50 bg-gray-50' : ''}`}>
               <div className="absolute top-6 right-6">
                 <button 
                   onClick={() => setMenuOpenId(menuOpenId === campaign.id ? null : campaign.id)}
@@ -1740,6 +1771,11 @@ function CampaignsPage({
                       {campaign.status}
                     </span>
                     <span className="text-[8px] font-bold uppercase tracking-widest opacity-40">{campaign.createdAt}</span>
+                    {campaign.expiresAt && (
+                      <span className={`text-[8px] font-bold uppercase tracking-widest ml-auto ${isCampaignExpired(campaign) ? 'text-deep-red' : 'opacity-40'}`}>
+                        {formatExpiryDate(campaign)}
+                      </span>
+                    )}
                  </div>
                  
                  <h4 className="text-4xl font-display tracking-tighter uppercase mb-2 group-hover:text-deep-red transition-colors cursor-pointer" onClick={() => setSelectedCampaign(campaign)}>
