@@ -29,6 +29,7 @@ import {
   signInWithPopup
 } from "firebase/auth";
 import { doc, getDoc, setDoc, serverTimestamp, collection, addDoc, getDocs, query, orderBy, limit, updateDoc } from "firebase/firestore";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useBrandBrain } from "./hooks/useBrandBrain";
 import { generateContentPack } from "./services/groqService";
 
@@ -815,8 +816,11 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
   const [step, setStep] = useState(1);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [deliveryChannel, setDeliveryChannel] = useState<'discord' | 'telegram' | 'both'>('discord');
   const [telegramConnected, setTelegramConnected] = useState(false);
+  const [discordConnected, setDiscordConnected] = useState(false);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [data, setData] = useState({
     brandName: '',
     tagline: '',
@@ -830,16 +834,68 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
 
   const nextStep = () => setStep(s => Math.min(s + 1, 7));
   const prevStep = () => setStep(s => Math.max(s - 1, 1));
-  
+
+  useEffect(() => {
+    return () => {
+      if (logoPreview) {
+        URL.revokeObjectURL(logoPreview);
+      }
+    };
+  }, [logoPreview]);
+
+  const handleContinue = async () => {
+    setValidationError(null);
+    if (step === 1 && !data.brandName.trim()) {
+      setValidationError('Brand name is required.');
+      return;
+    }
+    if (step === 2 && !data.description.trim()) {
+      setValidationError('Description is required.');
+      return;
+    }
+    if (step === 3 && !data.audience.trim()) {
+      setValidationError('Target audience is required.');
+      return;
+    }
+    if (step === 5 && data.platforms.length === 0) {
+      setValidationError('Select at least one platform.');
+      return;
+    }
+    if (step === 6 && data.logo === null) {
+      setValidationError('Upload a logo to continue.');
+      return;
+    }
+    if (step === 7) {
+      if ((deliveryChannel === 'discord' || deliveryChannel === 'both') && !discordConnected) {
+        setValidationError('Connect Discord before launching.');
+        return;
+      }
+      if ((deliveryChannel === 'telegram' || deliveryChannel === 'both') && !telegramConnected) {
+        setValidationError('Connect Telegram before launching.');
+        return;
+      }
+      await handleLaunch();
+      return;
+    }
+    nextStep();
+  };
+
   const handleLaunch = async () => {
     if (!auth.currentUser) return;
     
     setIsSaving(true);
     setSaveError(null);
+    setValidationError(null);
     const uid = auth.currentUser.uid;
 
     try {
-      // Path as per user request: users/{uid}/brandBrain/current
+      let logoUrl: string | undefined;
+      if (data.logo) {
+        const storageRef = ref(getStorage(), `logos/${uid}/logo`);
+        await uploadBytes(storageRef, data.logo);
+        logoUrl = await getDownloadURL(storageRef);
+      }
+
       const docRef = doc(db, "users", uid, "brandBrain", "current");
       await setDoc(docRef, {
         brandName: data.brandName,
@@ -847,12 +903,13 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
         tone: [data.tone],
         targetAudience: data.audience,
         contentPillars: [], // Not currently in onboarding UI, so default to empty
-        deliveryChannel: deliveryChannel
+        deliveryChannel: deliveryChannel,
+        workspaceType: data.workspaceType,
+        logoUrl: logoUrl || null
       }, { merge: true });
       onComplete(data);
     } catch (err: any) {
       console.error("Failed to save brand brain:", err);
-      // Using context-specific error handling if possible, or just raw message
       setSaveError(err.message || "Failed to save your Brand Brain. Please try again.");
     } finally {
       setIsSaving(false);
@@ -895,6 +952,36 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
 
     return () => clearInterval(intervalId);
   }, [deliveryChannel, step, telegramConnected]);
+
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    if (step !== 7) return;
+    if (deliveryChannel !== 'discord' && deliveryChannel !== 'both') return;
+    if (discordConnected) return;
+
+    let intervalId: ReturnType<typeof setInterval>;
+
+    const checkDiscordConnection = async () => {
+      try {
+        const bdRef = doc(db, "users", uid, "brandBrain", "current");
+        const bdSnap = await getDoc(bdRef);
+        if (bdSnap.exists()) {
+          const bdData = bdSnap.data();
+          if (bdData?.discordConnected === true) {
+            setDiscordConnected(true);
+          }
+        }
+      } catch (pollErr) {
+        console.warn("Discord connection polling failed:", pollErr);
+      }
+    };
+
+    checkDiscordConnection();
+    intervalId = setInterval(checkDiscordConnection, 2000);
+
+    return () => clearInterval(intervalId);
+  }, [deliveryChannel, step, discordConnected]);
 
   const platforms = [
     { id: 'x', label: 'Twitter / X' },
@@ -1041,10 +1128,28 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
               <div className="space-y-12">
                 <h2 className="text-6xl md:text-8xl font-display tracking-tighter leading-[0.85]">BRAND ASSETS</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="border-2 border-dashed border-black/20 p-12 flex flex-col items-center justify-center text-center group hover:border-black cursor-pointer bg-black/5 transition-all shadow-hard">
-                    <Upload className="mb-4 opacity-40 group-hover:opacity-100 group-hover:scale-110 transition-all" size={40} />
-                    <p className="text-[10px] font-bold uppercase tracking-widest">Upload Logo</p>
-                    <p className="text-[8px] mt-2 opacity-40">SVG, PNG, JPG (SVG PREFERRED)</p>
+                  <div className="border-2 border-dashed border-black/20 p-12 flex flex-col items-center justify-center text-center group hover:border-black cursor-pointer bg-black/5 transition-all shadow-hard relative overflow-hidden">
+                    {logoPreview ? (
+                      <img src={logoPreview} alt="Logo preview" className="max-h-48 object-contain" />
+                    ) : (
+                      <>
+                        <Upload className="mb-4 opacity-40 group-hover:opacity-100 group-hover:scale-110 transition-all" size={40} />
+                        <p className="text-[10px] font-bold uppercase tracking-widest">Upload Logo</p>
+                        <p className="text-[8px] mt-2 opacity-40">SVG, PNG, JPG (SVG PREFERRED)</p>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="absolute inset-0 opacity-0 cursor-pointer"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] ?? null;
+                        if (file) {
+                          setData({ ...data, logo: file });
+                          setLogoPreview(URL.createObjectURL(file));
+                        }
+                      }}
+                    />
                   </div>
                   <div className="border-2 border-black p-8 bg-ivory shadow-hard">
                     <div className="flex items-center justify-between mb-6">
@@ -1148,18 +1253,24 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
                       <p className="text-xs font-bold uppercase tracking-widest opacity-60 mb-6">
                         Connect your Discord account to receive workspace assets and updates.
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (auth.currentUser) {
-                            const url = `https://discord.com/oauth2/authorize?client_id=1506400226586394624&redirect_uri=https%3A%2F%2Fdod-paying-discipline-items.trycloudflare.com%2Fauth%2Fdiscord%2Fcallback&response_type=code&scope=identify&state=${auth.currentUser.uid}`;
-                            window.open(url, '_blank');
-                          }
-                        }}
-                        className="w-full bg-black text-ivory p-6 font-bold uppercase text-sm tracking-widest hover:bg-deep-red transition-all shadow-hard"
-                      >
-                        CONNECT DISCORD
-                      </button>
+                      {discordConnected ? (
+                        <div className="w-full bg-black text-ivory p-6 font-bold uppercase text-sm tracking-widest shadow-hard text-center">
+                          ✅ DISCORD CONNECTED
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (auth.currentUser) {
+                              const url = `https://discord.com/oauth2/authorize?client_id=1506400226586394624&redirect_uri=https%3A%2F%2Fdod-paying-discipline-items.trycloudflare.com%2Fauth%2Fdiscord%2Fcallback&response_type=code&scope=identify&state=${auth.currentUser.uid}`;
+                              window.open(url, '_blank');
+                            }
+                          }}
+                          className="w-full bg-black text-ivory p-6 font-bold uppercase text-sm tracking-widest hover:bg-deep-red transition-all shadow-hard"
+                        >
+                          CONNECT DISCORD
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1206,6 +1317,12 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
                   {saveError}
                 </div>
               )}
+              {validationError && (
+                <div className="mb-8 p-4 border-2 border-deep-red bg-deep-red/5 flex items-center gap-3 text-[10px] font-bold uppercase tracking-widest text-deep-red">
+                  <AlertCircle size={16} />
+                  {validationError}
+                </div>
+              )}
               
               <div className="flex items-center justify-between">
                 <button 
@@ -1216,7 +1333,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
                   <ChevronLeft size={20} /> Back
                 </button>
                 <button 
-                  onClick={step === 7 ? handleLaunch : nextStep}
+                  onClick={handleContinue}
                   disabled={isSaving}
                   className={`bg-deep-red text-ivory px-12 py-6 font-bold uppercase text-sm tracking-[0.3em] transition-all shadow-hard ${isSaving ? 'bg-black/20 cursor-not-allowed' : 'hover:bg-black'}`}
                 >
@@ -1319,7 +1436,8 @@ function NewCampaignFlow({ onCancel, onComplete, setView, gallery }: { onCancel:
   const [formData, setFormData] = useState({
     name: '',
     brief: '',
-    duration: '7 days'
+    duration: '7 days',
+    workspaceType: 'brand_product' as 'ai_toons' | 'memes' | 'brand_product'
   });
 
   const handleDeploy = async () => {
@@ -1343,6 +1461,7 @@ function NewCampaignFlow({ onCancel, onComplete, setView, gallery }: { onCancel:
         duration: formData.duration,
         durationDays: durationDays,
         expiresAt: expiresAtDate,
+        workspaceType: formData.workspaceType,
         status: 'active',
         createdAt: serverTimestamp(),
         deployedAt: serverTimestamp()
@@ -1364,8 +1483,11 @@ function NewCampaignFlow({ onCancel, onComplete, setView, gallery }: { onCancel:
             console.warn("Warning: discordUserId not found in brandBrain document");
           }
         }
+        await setDoc(doc(db, "users", uid, "brandBrain", "current"), {
+          workspaceType: formData.workspaceType
+        }, { merge: true });
       } catch (bdErr) {
-        console.warn("Could not read brandBrain for Discord user:", bdErr);
+        console.warn("Could not read or update brandBrain for workspaceType:", bdErr);
       }
 
       // 3. Trigger endpoint if credentials are present
@@ -1474,6 +1596,26 @@ function NewCampaignFlow({ onCancel, onComplete, setView, gallery }: { onCancel:
                       <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-6 text-black">
                         <ChevronRight size={16} className="rotate-90" />
                       </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-widest mb-3 opacity-60">CONTENT TYPE</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {[
+                        { value: 'ai_toons', label: 'AI TOONS' },
+                        { value: 'memes', label: 'MEMES' },
+                        { value: 'brand_product', label: 'BRAND PRODUCT MOTIONS' }
+                      ].map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, workspaceType: option.value as 'ai_toons' | 'memes' | 'brand_product' })}
+                          className={`border-2 border-black p-4 font-bold uppercase text-[10px] tracking-widest shadow-hard transition-all ${formData.workspaceType === option.value ? 'bg-amber' : 'bg-ivory hover:bg-black/5'}`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </div>
