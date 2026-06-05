@@ -14,7 +14,7 @@ import {
   Play, Search, File, PanelTop, Library, TrendingUp, TrendingDown,
   Bell, User, ShieldAlert, CheckCircle2, CreditCard
 } from "lucide-react";
-import { useState, useEffect, FormEvent, DragEvent, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, FormEvent, DragEvent, useMemo } from "react";
 import { 
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, 
   CartesianGrid, Tooltip, Legend, BarChart, Bar, Cell 
