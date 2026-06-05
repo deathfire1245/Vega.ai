@@ -2528,420 +2528,723 @@ function SettingsPage({
   onboardingData: any, 
   setOnboardingData: (d: any) => void 
 }) {
-  const [activeTab, setActiveTab] = useState<'BRAIN' | 'ACCOUNT' | 'NOTIFICATIONS' | 'DANGER'>('BRAIN');
-  const [showConnectModal, setShowConnectModal] = useState(false);
-  const [showResetModal, setShowResetModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState('');
-  
-  // Local form states
-  const [brandName, setBrandName] = useState(onboardingData?.brandName || 'VEGA AI');
-  const [tagline, setTagline] = useState(onboardingData?.tagline || 'FUTURE OF CONTENT');
-  const [description, setDescription] = useState(onboardingData?.description || 'AI-powered marketing engine.');
-  const [audience, setAudience] = useState(onboardingData?.audience || 'Tech-forward brands.');
-  const [selectedStyles, setSelectedStyles] = useState<string[]>(onboardingData?.visualStyles || []);
-  
-  const [notifications, setNotifications] = useState({
-    launched: true,
-    posted: true,
-    weekly: false,
-    learning: true,
-    updates: true
+  const [brandData, setBrandData] = useState({
+    brandName: '',
+    brandDescription: '',
+    targetAudience: '',
+    tone: 'bold',
+    colors: ['#000000', '#FFFFFF'],
+    logoUrl: '',
+    discordUserId: '',
+    discordUsername: '',
+    telegramConnected: false,
+    discordConnected: false
   });
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [toast, setToast] = useState<string | null>(null);
 
-  const styles = ['Bold', 'Minimal', 'Technical', 'Modern', 'Futuristic', 'Clean', 'Brutal', 'Vibrant'];
+  useEffect(() => {
+    let isMounted = true;
+    const loadBrandBrain = async () => {
+      if (!auth.currentUser) return;
+      try {
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'brandBrain', 'current');
+        const snap = await getDoc(docRef);
+        if (!snap.exists()) return;
+        const data = snap.data();
+        if (!isMounted) return;
+        setBrandData({
+          brandName: data.brandName || '',
+          brandDescription: data.brandDescription || '',
+          targetAudience: data.targetAudience || '',
+          tone: Array.isArray(data.tone) ? data.tone[0] || 'bold' : data.tone || 'bold',
+          colors: Array.isArray(data.colors) && data.colors.length > 0 ? data.colors : ['#000000', '#FFFFFF'],
+          logoUrl: data.logoUrl || '',
+          discordUserId: data.discordUserId || '',
+          discordUsername: data.discordUsername || '',
+          telegramConnected: data.telegramConnected === true,
+          discordConnected: data.discordConnected === true
+        });
+        if (data.logoUrl) {
+          setLogoPreview(data.logoUrl);
+        }
+      } catch (err) {
+        console.error('Failed to load brand brain settings:', err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+    loadBrandBrain();
+    return () => {
+      isMounted = false;
+      if (logoFile && logoPreview) {
+        URL.revokeObjectURL(logoPreview);
+      }
+    };
+  }, [logoFile, logoPreview]);
 
-  const toggleStyle = (style: string) => {
-    setSelectedStyles(prev => 
-      prev.includes(style) ? prev.filter(s => s !== style) : [...prev, style]
-    );
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  const tones = [
+    { id: 'bold', label: 'Bold & Direct' },
+    { id: 'minimal', label: 'Minimalist' },
+    { id: 'funny', label: 'Witty & Fun' },
+    { id: 'professional', label: 'Professional' }
+  ];
+
+  const handleLogoChange = (file: File) => {
+    setLogoFile(file);
+    const objectUrl = URL.createObjectURL(file);
+    setLogoPreview(objectUrl);
   };
 
-  const handleSaveBrain = () => {
-    setOnboardingData({
-      ...onboardingData,
-      brandName,
-      tagline,
-      description,
-      audience,
-      visualStyles: selectedStyles
-    });
-    // Visual feedback would go here
+  const handleSave = async () => {
+    if (!auth.currentUser) return;
+    setIsSaving(true);
+    try {
+      const uid = auth.currentUser.uid;
+      let logoUrl = brandData.logoUrl;
+      if (logoFile) {
+        const storageRef = ref(getStorage(), `logos/${uid}/logo`);
+        await uploadBytes(storageRef, logoFile);
+        logoUrl = await getDownloadURL(storageRef);
+      }
+      const docRef = doc(db, 'users', uid, 'brandBrain', 'current');
+      await setDoc(docRef, {
+        brandName: brandData.brandName,
+        brandDescription: brandData.brandDescription,
+        targetAudience: brandData.targetAudience,
+        tone: [brandData.tone],
+        colors: brandData.colors,
+        logoUrl,
+        discordUserId: brandData.discordUserId || null,
+        discordUsername: brandData.discordUsername || null,
+        telegramConnected: brandData.telegramConnected === true
+      }, { merge: true });
+      setBrandData(prev => ({ ...prev, logoUrl }));
+      setOnboardingData({
+        ...onboardingData,
+        brandName: brandData.brandName,
+        description: brandData.brandDescription,
+        audience: brandData.targetAudience,
+        tone: brandData.tone,
+        colors: brandData.colors,
+        logoUrl
+      });
+      setToast('SETTINGS SAVED');
+    } catch (err) {
+      console.error('Failed to save settings:', err);
+      setToast('SAVE FAILED');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const launchDiscord = () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    const url = `https://discord.com/oauth2/authorize?client_id=1506400226586394624&redirect_uri=https%3A%2F%2Fdod-paying-discipline-items.trycloudflare.com%2Fauth%2Fdiscord%2Fcallback&response_type=code&scope=identify&state=${uid}`;
+    window.location.href = url;
+  };
+
+  const launchTelegram = () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    window.location.href = `https://t.me/Vegaai_official_agent_bot?start=${uid}`;
   };
 
   return (
-    <div className="flex flex-col lg:flex-row gap-12 text-left min-h-[600px]">
-      {/* SIDEBAR TABS */}
-      <div className="w-full lg:w-64 shrink-0 space-y-2">
-        {[
-          { id: 'BRAIN', label: 'BRAND BRAIN', icon: Sparkles },
-          { id: 'ACCOUNT', label: 'ACCOUNT', icon: User },
-          { id: 'NOTIFICATIONS', label: 'NOTIFICATIONS', icon: Bell },
-          { id: 'DANGER', label: 'DANGER ZONE', icon: ShieldAlert, color: 'text-deep-red' },
-        ].map(tab => (
-          <button 
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
-            className={`w-full flex items-center justify-between p-4 border-2 border-black font-bold uppercase text-[10px] tracking-widest transition-all shadow-hard ${
-              activeTab === tab.id ? 'bg-black text-ivory translate-x-1 -translate-y-1' : 'bg-ivory hover:bg-black/5'
-            } ${tab.color || ''}`}
-          >
-            <div className="flex items-center gap-3">
-              <tab.icon size={14} /> {tab.label}
+    <div className="space-y-12">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="border-2 border-black bg-ivory p-8 shadow-hard space-y-8">
+          <div>
+            <p className="text-[8px] font-bold uppercase tracking-widest opacity-40">Brand Identity</p>
+            <h2 className="text-4xl font-display uppercase tracking-tighter mt-3">Brand Details</h2>
+          </div>
+
+          <div className="space-y-4">
+            <label className="text-[8px] font-bold uppercase tracking-widest opacity-40">Brand Name</label>
+            <input
+              value={brandData.brandName}
+              onChange={e => setBrandData({ ...brandData, brandName: e.target.value })}
+              className="w-full bg-white border-2 border-black p-4 font-bold uppercase text-xs tracking-widest focus:bg-amber/10 focus:outline-none"
+            />
+          </div>
+
+          <div className="space-y-4">
+            <label className="text-[8px] font-bold uppercase tracking-widest opacity-40">Description</label>
+            <textarea
+              rows={4}
+              value={brandData.brandDescription}
+              onChange={e => setBrandData({ ...brandData, brandDescription: e.target.value })}
+              className="w-full bg-white border-2 border-black p-4 font-bold uppercase text-xs tracking-widest focus:bg-amber/10 focus:outline-none resize-none"
+            />
+          </div>
+
+          <div className="space-y-4">
+            <label className="text-[8px] font-bold uppercase tracking-widest opacity-40">Target Audience</label>
+            <textarea
+              rows={3}
+              value={brandData.targetAudience}
+              onChange={e => setBrandData({ ...brandData, targetAudience: e.target.value })}
+              className="w-full bg-white border-2 border-black p-4 font-bold uppercase text-xs tracking-widest focus:bg-amber/10 focus:outline-none resize-none"
+            />
+          </div>
+
+          <div className="space-y-4">
+            <label className="text-[8px] font-bold uppercase tracking-widest opacity-40">Tone</label>
+            <div className="grid grid-cols-2 gap-3">
+              {tones.map(t => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setBrandData({ ...brandData, tone: t.id })}
+                  className={`p-6 border-2 border-black font-bold uppercase text-xs tracking-widest shadow-hard transition-all ${brandData.tone === t.id ? 'bg-amber' : 'bg-white hover:bg-black/5'}`}
+                >
+                  {t.label}
+                </button>
+              ))}
             </div>
-            <ChevronRight size={14} className={activeTab === tab.id ? 'opacity-100' : 'opacity-20'} />
-          </button>
-        ))}
+          </div>
+        </div>
+
+        <div className="border-2 border-black bg-ivory p-8 shadow-hard space-y-8">
+          <div>
+            <p className="text-[8px] font-bold uppercase tracking-widest opacity-40">Brand Assets</p>
+            <h2 className="text-4xl font-display uppercase tracking-tighter mt-3">Logo & Colors</h2>
+          </div>
+
+          <div className="border-2 border-dashed border-black/20 p-8 relative group hover:border-black transition-all">
+            {logoPreview ? (
+              <img src={logoPreview} alt="Logo preview" className="max-h-48 object-contain mx-auto" />
+            ) : (
+              <div className="flex flex-col items-center justify-center gap-4 py-16">
+                <Upload size={32} className="opacity-40" />
+                <p className="text-[10px] font-bold uppercase tracking-widest">Upload Logo</p>
+                <p className="text-[8px] opacity-40">SVG, PNG, JPG</p>
+              </div>
+            )}
+            <input
+              type="file"
+              accept="image/*"
+              className="absolute inset-0 opacity-0 cursor-pointer"
+              onChange={e => {
+                const file = e.target.files?.[0] ?? null;
+                if (file) handleLogoChange(file);
+              }}
+            />
+          </div>
+
+          <div className="border-2 border-black p-6 bg-white">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-[8px] font-bold uppercase tracking-widest opacity-40">Brand Colors</span>
+              <span className="text-[8px] font-bold uppercase opacity-40">2–6 colors</span>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {brandData.colors.map((color, index) => (
+                <div key={index} className="relative">
+                  <div className="w-12 h-12 border-2 border-black shadow-[3px_3px_0px_#000] cursor-pointer" style={{ backgroundColor: color }}>
+                    <input
+                      type="color"
+                      value={color}
+                      onChange={e => {
+                        const next = [...brandData.colors];
+                        next[index] = e.target.value;
+                        setBrandData({ ...brandData, colors: next });
+                      }}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    />
+                  </div>
+                  {index >= 2 && (
+                    <button
+                      onClick={() => {
+                        setBrandData({ ...brandData, colors: brandData.colors.filter((_, i) => i !== index) });
+                      }}
+                      className="absolute -top-2 -right-2 bg-deep-red text-ivory border border-black p-0.5"
+                    >
+                      <X size={10} />
+                    </button>
+                  )}
+                </div>
+              ))}
+              {brandData.colors.length < 6 && (
+                <label className="w-12 h-12 border-2 border-black border-dashed flex items-center justify-center cursor-pointer">
+                  <Plus size={16} />
+                  <input
+                    type="color"
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                    onChange={e => {
+                      if (brandData.colors.length < 6) {
+                        setBrandData({ ...brandData, colors: [...brandData.colors, e.target.value] });
+                      }
+                    }}
+                  />
+                </label>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* CONTENT AREA */}
-      <div className="flex-grow bg-ivory border-2 border-black p-8 lg:p-12 shadow-hard space-y-12">
-        {activeTab === 'BRAIN' && (
-          <div className="space-y-12 animate-in fade-in slide-in-from-left-4">
-             <div className="space-y-2">
-               <h3 className="text-4xl font-display uppercase tracking-tighter">YOUR BRAND BRAIN</h3>
-               <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">This is what Vega knows about you. Keep it sharp.</p>
-             </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="border-2 border-black bg-ivory p-8 shadow-hard space-y-6">
+          <p className="text-[8px] font-bold uppercase tracking-widest opacity-40">Discord</p>
+          {brandData.discordUserId ? (
+            <div className="border-2 border-black p-6 bg-black text-ivory font-bold uppercase tracking-widest">
+              ✅ DISCORD CONNECTED — @{brandData.discordUsername || brandData.discordUserId}
+            </div>
+          ) : (
+            <button
+              onClick={launchDiscord}
+              className="w-full border-2 border-black bg-black text-ivory py-4 font-bold uppercase text-xs tracking-widest hover:bg-amber hover:text-black transition-all"
+            >
+              RECONNECT DISCORD
+            </button>
+          )}
+        </div>
 
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="space-y-2">
-                   <label className="text-[8px] font-bold uppercase tracking-widest opacity-40">Brand Name</label>
-                   <input value={brandName} onChange={e => setBrandName(e.target.value)} className="w-full bg-white border-2 border-black p-4 font-bold uppercase text-xs tracking-widest focus:bg-amber/10 focus:outline-none" />
-                </div>
-                <div className="space-y-2">
-                   <label className="text-[8px] font-bold uppercase tracking-widest opacity-40">Tagline</label>
-                   <input value={tagline} onChange={e => setTagline(e.target.value)} className="w-full bg-white border-2 border-black p-4 font-bold uppercase text-xs tracking-widest focus:bg-amber/10 focus:outline-none" />
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                   <label className="text-[8px] font-bold uppercase tracking-widest opacity-40">What do you sell?</label>
-                   <textarea rows={3} value={description} onChange={e => setDescription(e.target.value)} className="w-full bg-white border-2 border-black p-4 font-bold uppercase text-xs tracking-widest focus:bg-amber/10 focus:outline-none resize-none" />
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                   <label className="text-[8px] font-bold uppercase tracking-widest opacity-40">Target Audience</label>
-                   <textarea rows={3} value={audience} onChange={e => setAudience(e.target.value)} className="w-full bg-white border-2 border-black p-4 font-bold uppercase text-xs tracking-widest focus:bg-amber/10 focus:outline-none resize-none" />
-                </div>
-             </div>
+        <div className="border-2 border-black bg-ivory p-8 shadow-hard space-y-6">
+          <p className="text-[8px] font-bold uppercase tracking-widest opacity-40">Telegram</p>
+          {brandData.telegramConnected ? (
+            <div className="border-2 border-black p-6 bg-black text-ivory font-bold uppercase tracking-widest">
+              ✅ TELEGRAM CONNECTED
+            </div>
+          ) : (
+            <button
+              onClick={launchTelegram}
+              className="w-full border-2 border-black bg-black text-ivory py-4 font-bold uppercase text-xs tracking-widest hover:bg-amber hover:text-black transition-all"
+            >
+              RECONNECT TELEGRAM
+            </button>
+          )}
+        </div>
+      </div>
 
-             <div className="space-y-4">
-                <label className="text-[8px] font-bold uppercase tracking-widest opacity-40">Brand Tone / Styles</label>
-                <div className="flex flex-wrap gap-2">
-                   {styles.map(s => (
-                     <button 
-                      key={s} 
-                      onClick={() => toggleStyle(s)}
-                      className={`px-4 py-2 border-2 border-black font-bold uppercase text-[8px] tracking-widest transition-all ${
-                        selectedStyles.includes(s) ? 'bg-black text-ivory' : 'bg-white hover:bg-black/5'
-                      }`}
-                     >
-                       {s}
-                     </button>
-                   ))}
-                </div>
-             </div>
-
-             <div className="pt-8 border-t-2 border-black/10">
-               <button onClick={handleSaveBrain} className="bg-deep-red text-ivory px-10 py-5 font-bold uppercase text-[10px] tracking-widest shadow-hard hover:bg-black transition-all">
-                 SAVE BRAIN CHANGES
-               </button>
-               <p className="text-[7px] font-bold uppercase tracking-widest opacity-20 mt-4 italic">Updating your brain improves future workspace accuracy instantly.</p>
-             </div>
-          </div>
-        )}
-
-        {activeTab === 'ACCOUNT' && (
-          <div className="space-y-12 animate-in fade-in slide-in-from-left-4">
-             <div className="flex items-start justify-between">
-                <div className="space-y-2">
-                   <h3 className="text-4xl font-display uppercase tracking-tighter">ACCOUNT CONTROL</h3>
-                </div>
-             </div>
-
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="space-y-2">
-                   <label className="text-[8px] font-bold uppercase tracking-widest opacity-40">Full Name</label>
-                   <input defaultValue="VEGA USER" className="w-full bg-white border-2 border-black p-4 font-bold uppercase text-xs tracking-widest focus:outline-none" />
-                </div>
-                <div className="space-y-2">
-                   <label className="text-[8px] font-bold uppercase tracking-widest opacity-40">Email Address</label>
-                   <input defaultValue="mnaeel381@gmail.com" className="w-full bg-white border-2 border-black p-4 font-bold uppercase text-xs tracking-widest focus:outline-none opacity-40 cursor-not-allowed" disabled />
-                </div>
-             </div>
-
-             <div className="space-y-6 pt-12 border-t-2 border-black/10">
-                <h4 className="text-xl font-display uppercase tracking-widest">CHANGE PASSWORD</h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                   <input type="password" placeholder="CURRENT PASSWORD" className="w-full bg-white border-2 border-black p-4 font-bold uppercase text-[10px] tracking-widest focus:outline-none" />
-                   <input type="password" placeholder="NEW PASSWORD" className="w-full bg-white border-2 border-black p-4 font-bold uppercase text-[10px] tracking-widest focus:outline-none" />
-                   <input type="password" placeholder="CONFIRM NEW" className="w-full bg-white border-2 border-black p-4 font-bold uppercase text-[10px] tracking-widest focus:outline-none" />
-                </div>
-             </div>
-
-             <button className="bg-deep-red text-ivory px-10 py-5 font-bold uppercase text-[10px] tracking-widest shadow-hard hover:bg-black transition-all">
-                UPDATE PROFILE
-             </button>
-          </div>
-        )}
-
-
-
-        {activeTab === 'NOTIFICATIONS' && (
-          <div className="space-y-12 animate-in fade-in slide-in-from-left-4">
-             <div className="space-y-2">
-               <h3 className="text-4xl font-display uppercase tracking-tighter">PREFERENCES</h3>
-               <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">Choose how Vega speaks to you across the lifecycle.</p>
-             </div>
-
-             <div className="space-y-8">
-                {[
-                  { key: 'launched', label: 'Workspace Launched', desc: 'Alert when a new workspace enters active status' },
-                  { key: 'learning', label: 'Brain Learning Updates', desc: 'Notifications when your brand brain hits a confidence milestone' },
-                  { key: 'updates', label: 'Product Updates', desc: 'New feature drops and Vega roadmap news' },
-                ].map(n => (
-                  <div key={n.key} className="flex items-center justify-between group">
-                     <div className="space-y-1">
-                        <span className="text-sm font-bold uppercase tracking-widest group-hover:text-deep-red transition-colors">{n.label}</span>
-                        <p className="text-[8px] font-bold uppercase opacity-40">{n.desc}</p>
-                     </div>
-                     <button 
-                      onClick={() => setNotifications(prev => ({ ...prev, [n.key]: !(prev as any)[n.key] }))}
-                      className={`w-14 h-8 border-2 border-black transition-all relative ${
-                        (notifications as any)[n.key] ? 'bg-amber' : 'bg-black/5'
-                      }`}
-                     >
-                        <div className={`absolute top-1 bottom-1 w-5 bg-black transition-all ${
-                          (notifications as any)[n.key] ? 'right-1' : 'left-1'
-                        }`} />
-                     </button>
-                  </div>
-                ))}
-             </div>
-
-             <button className="bg-deep-red text-ivory px-10 py-5 font-bold uppercase text-[10px] tracking-widest shadow-hard hover:bg-black transition-all mt-8">
-                SAVE PREFERENCES
-             </button>
-          </div>
-        )}
-
-        {activeTab === 'DANGER' && (
-          <div className="space-y-12 animate-in fade-in slide-in-from-left-4">
-             <div className="space-y-2">
-               <h3 className="text-4xl font-display uppercase tracking-tighter text-deep-red">DANGER ZONE</h3>
-               <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">Irreversible actions that scale back your intelligence bank.</p>
-             </div>
-
-             <div className="border-4 border-black p-10 bg-deep-red/5 space-y-10 shadow-hard">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                   <div className="space-y-1">
-                      <span className="text-sm font-bold uppercase tracking-widest">RESET BRAND BRAIN</span>
-                      <p className="text-[8px] font-bold uppercase opacity-40">Clears all style preferences and historical learning data</p>
-                   </div>
-                   <button 
-                    onClick={() => setShowResetModal(true)}
-                    className="border-2 border-deep-red text-deep-red px-6 py-3 font-bold uppercase text-[10px] tracking-widest hover:bg-deep-red hover:text-ivory transition-all shadow-hard"
-                   >
-                     RESET DATA
-                   </button>
-                </div>
-
-                <div className="h-[2px] bg-black/10" />
-
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                   <div className="space-y-1">
-                      <span className="text-sm font-bold uppercase tracking-widest">DELETE ACCOUNT</span>
-                      <p className="text-[8px] font-bold uppercase opacity-40">Permanently remove all data, workspaces and subscription</p>
-                   </div>
-                   <button 
-                    onClick={() => setShowDeleteModal(true)}
-                    className="border-2 border-deep-red text-deep-red px-6 py-3 font-bold uppercase text-[10px] tracking-widest hover:bg-deep-red hover:text-ivory transition-all shadow-hard"
-                   >
-                     TERMINATE ACCESS
-                   </button>
-                </div>
-             </div>
-          </div>
-        )}
+      <div className="flex justify-end">
+        <button
+          onClick={handleSave}
+          disabled={isSaving || isLoading}
+          className={`px-10 py-5 font-bold uppercase text-xs tracking-widest shadow-hard transition-all ${isSaving ? 'bg-black text-ivory opacity-70 cursor-not-allowed' : 'bg-deep-red text-ivory hover:bg-black'}`}
+        >
+          {isSaving ? 'SAVING...' : 'SAVE SETTINGS'}
+        </button>
       </div>
 
       <AnimatePresence>
-        {/* RESET MODAL */}
-        {showResetModal && (
-          <div className="fixed inset-0 z-[220] bg-black/80 flex items-center justify-center p-6 backdrop-blur-sm">
-             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white border-4 border-black p-12 max-w-md w-full shadow-hard-lg text-center">
-                <AlertCircle size={48} className="mx-auto mb-8 text-deep-red" />
-                <h3 className="text-3xl font-display uppercase tracking-tighter mb-4">BRAIN WIPE?</h3>
-                <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-12">This will clear all learned preferences. Your next generation will start from zero.</p>
-                <div className="flex flex-col gap-4">
-                  <button onClick={() => setShowResetModal(false)} className="w-full py-4 bg-deep-red text-ivory font-bold uppercase text-[10px] tracking-widest shadow-hard">CONFIRM WIPE</button>
-                  <button onClick={() => setShowResetModal(false)} className="w-full py-4 border-2 border-black font-bold uppercase text-[10px] tracking-widest shadow-hard">KEEP DATA</button>
-                </div>
-             </motion.div>
-          </div>
-        )}
-
-        {/* DELETE MODAL */}
-        {showDeleteModal && (
-          <div className="fixed inset-0 z-[220] bg-black/80 flex items-center justify-center p-6 backdrop-blur-sm">
-             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white border-4 border-black p-12 max-w-md w-full shadow-hard-lg text-center">
-                <h3 className="text-3xl font-display uppercase tracking-tighter mb-4">TERMINATE ACCOUNT?</h3>
-                <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-8">Type <span className="text-black font-black">DELETE</span> to confirm permanent termination.</p>
-                <div className="space-y-6">
-                  <input value={deleteConfirm} onChange={e => setDeleteConfirm(e.target.value)} placeholder="TYPE DELETE..." className="w-full bg-white border-2 border-black p-5 font-bold uppercase text-[10px] tracking-[0.3em] text-center focus:outline-none" />
-                  <button 
-                    disabled={deleteConfirm !== 'DELETE'}
-                    className={`w-full py-4 font-bold uppercase text-[10px] tracking-widest shadow-hard transition-all ${
-                      deleteConfirm === 'DELETE' ? 'bg-deep-red text-ivory hover:bg-black' : 'bg-black/10 text-black/20 cursor-not-allowed'
-                    }`}
-                  >
-                    CONFIRM TERMINATION
-                  </button>
-                  <button onClick={() => { setShowDeleteModal(false); setDeleteConfirm(''); }} className="text-[8px] font-bold uppercase tracking-widest opacity-40">Abort Operation</button>
-                </div>
-             </motion.div>
-          </div>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-10 right-10 bg-black text-ivory border-2 border-white p-4 font-bold uppercase tracking-widest shadow-hard"
+          >
+            {toast}
+          </motion.div>
         )}
       </AnimatePresence>
     </div>
   );
 }
 
-function GalleryPage({ 
-  gallery, 
-  remixesToday,
-  onUpdateGallery,
-  onRemix
-}: { 
-  gallery: GalleryItem[], 
-  remixesToday: number,
-  onUpdateGallery: (g: GalleryItem[]) => void,
-  onRemix: () => void
-}) {
-  const [filter, setFilter] = useState<'ALL' | 'BOLD & LOUD' | 'CLEAN & MINIMAL' | 'DARK & MOODY' | 'BRIGHT & ENERGETIC' | 'LUXURY' | 'PLAYFUL'>('ALL');
-  const [search, setSearch] = useState('');
-  const [remixItem, setRemixItem] = useState<GalleryItem | null>(null);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [viewPromptId, setViewPromptId] = useState<string | null>(null);
+function GalleryPage() {
+  interface GalleryCard {
+    id: string;
+    campaignId: string;
+    campaignName: string;
+    url: string;
+    mediaType: 'image' | 'video';
+    caption: string;
+    prompt: string;
+    date: string;
+    contentType: string;
+  }
 
-  const filteredGallery = gallery.filter(item => {
-    const matchesFilter = filter === 'ALL' || item.style === filter;
-    const matchesSearch = item.prompt.toLowerCase().includes(search.toLowerCase()) || 
-                          item.style.toLowerCase().includes(search.toLowerCase());
-    return matchesFilter && matchesSearch;
+  const [items, setItems] = useState<GalleryCard[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<GalleryCard | null>(null);
+  const [filter, setFilter] = useState<'ALL' | 'IMAGE' | 'VIDEO'>('ALL');
+  const [userId, setUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let canceled = false;
+    const loadGallery = async () => {
+      if (!auth.currentUser) {
+        setLoading(false);
+        return;
+      }
+      setUserId(auth.currentUser.uid);
+      try {
+        const campaignQuery = query(collection(db, 'users', auth.currentUser.uid, 'campaigns'), orderBy('createdAt', 'desc'));
+        const campaignSnap = await getDocs(campaignQuery);
+        const galleryItems: GalleryCard[] = [];
+
+        await Promise.all(campaignSnap.docs.map(async campaignDoc => {
+          const campaignData = campaignDoc.data();
+          const campaignName = campaignData.name || campaignDoc.id;
+          const gallerySnap = await getDocs(collection(db, 'users', auth.currentUser.uid, 'campaigns', campaignDoc.id, 'gallery'));
+          gallerySnap.docs.forEach(itemDoc => {
+            const data = itemDoc.data() as any;
+            const url = data.url || data.imageUrl || '';
+            const extension = url.split('.').pop()?.toLowerCase() || '';
+            const mediaType = data.type === 'video' || extension === 'mp4' ? 'video' : 'image';
+            const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt ? new Date(data.createdAt) : null;
+            galleryItems.push({
+              id: `${campaignDoc.id}-${itemDoc.id}`,
+              campaignId: campaignDoc.id,
+              campaignName,
+              url,
+              mediaType,
+              caption: data.caption || data.title || '',
+              prompt: data.prompt || data.description || '',
+              date: createdAt ? createdAt.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).toUpperCase() : 'UNKNOWN',
+              contentType: mediaType === 'video' ? 'VIDEO' : 'IMAGE'
+            });
+          });
+        }));
+
+        if (!canceled) {
+          setItems(galleryItems);
+        }
+      } catch (err) {
+        console.error('Failed to load gallery:', err);
+      } finally {
+        if (!canceled) setLoading(false);
+      }
+    };
+    loadGallery();
+    return () => { canceled = true; };
+  }, []);
+
+  const filteredItems = items.filter(item => {
+    if (filter === 'ALL') return true;
+    return filter === 'IMAGE' ? item.mediaType === 'image' : item.mediaType === 'video';
   });
-
-  const remixLimits = {
-    free: 1000,
-    pro: 1000,
-    creator: 1000
-  };
-
-  const currentLimit = 1000;
-  const canRemix = true;
 
   return (
     <div className="space-y-12">
-      <div className="flex flex-col gap-8">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-           <div className="flex-grow max-w-xl relative group">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 opacity-20 group-focus-within:opacity-100 transition-opacity" size={20} />
-              <input 
-                type="text"
-                placeholder="SEARCH VISUAL DNA..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full bg-transparent border-2 border-black p-5 pl-12 font-bold uppercase text-[10px] tracking-widest focus:bg-black/5 focus:outline-none shadow-hard"
-              />
-           </div>
-           
-           <button 
-             onClick={() => setShowAddModal(true)}
-             className="bg-deep-red text-ivory px-10 py-5 font-bold uppercase text-[10px] tracking-widest shadow-hard hover:bg-black transition-all flex items-center gap-3 shrink-0"
-           >
-             <Plus size={16} /> ADD TO GALLERY
-           </button>
+      {loading ? (
+        <div className="border-2 border-black p-20 shadow-hard bg-ivory flex items-center justify-center">
+          <RefreshCcw size={40} className="animate-spin text-black opacity-20" />
         </div>
-
-        <div className="flex flex-wrap gap-3">
-          {['ALL', 'BOLD & LOUD', 'CLEAN & MINIMAL', 'DARK & MOODY', 'BRIGHT & ENERGETIC', 'LUXURY', 'PLAYFUL'].map((f) => (
-            <button 
-              key={f}
-              onClick={() => setFilter(f as any)}
-              className={`text-[8px] font-bold uppercase tracking-[0.2em] px-4 py-2 border-2 border-black transition-all shadow-hard ${filter === f ? 'bg-black text-ivory' : 'bg-ivory hover:bg-black/5'}`}
-            >
-              {f}
-            </button>
-          ))}
+      ) : filteredItems.length === 0 ? (
+        <div className="border-2 border-black p-20 shadow-hard bg-ivory text-center">
+          <h3 className="text-5xl font-display uppercase tracking-tighter mb-6">NO CONTENT YET</h3>
+          <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 max-w-xl mx-auto">
+            Deploy a workspace to start generating. Your gallery will fill with media from each workspace automatically.
+          </p>
         </div>
-      </div>
+      ) : (
+        <>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="flex flex-wrap gap-3">
+              {['ALL', 'IMAGE', 'VIDEO'].map(v => (
+                <button
+                  key={v}
+                  onClick={() => setFilter(v as any)}
+                  className={`text-[8px] font-bold uppercase tracking-[0.2em] px-4 py-2 border-2 border-black transition-all shadow-hard ${filter === v ? 'bg-black text-ivory' : 'bg-ivory hover:bg-black/5'}`}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">{items.length} items</p>
+          </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-         {filteredGallery.map(item => (
-           <div key={item.id} className="bg-ivory border-2 border-black shadow-hard group relative aspect-[4/5] overflow-hidden flex flex-col">
-              {/* IMAGE PLACEHOLDER */}
-              <div className={`relative flex-grow ${item.color} transition-all duration-700 group-hover:scale-105`}>
-                 <div className="absolute top-4 left-4 flex flex-col gap-2">
-                    <span className="bg-black text-ivory px-2 py-1 text-[7px] font-bold uppercase tracking-widest border border-ivory/20">
-                      {item.style}
-                    </span>
-                    <span className={`px-2 py-1 text-[7px] font-bold uppercase tracking-widest border border-black/20 ${item.source === 'VEGA' ? 'bg-amber text-black' : 'bg-ivory text-black'}`}>
-                      {item.source}
-                    </span>
-                 </div>
-
-                 {/* HOVER OVERLAY */}
-                 <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-all duration-300 p-8 flex flex-col justify-center items-center text-center">
-                    <p className="text-ivory text-[10px] font-bold uppercase tracking-widest leading-relaxed mb-8 line-clamp-4">
-                       {item.prompt}
-                    </p>
-                    
-                    <div className="flex flex-col gap-4 w-full">
-                       <button 
-                         onClick={() => setRemixItem(item)}
-                         className="w-full py-4 bg-deep-red text-ivory font-bold uppercase text-[10px] tracking-widest hover:bg-white hover:text-black transition-all shadow-hard"
-                       >
-                         REMIX
-                       </button>
-                       <button 
-                         onClick={() => setViewPromptId(item.id)}
-                         className="w-full py-4 bg-amber text-black font-bold uppercase text-[10px] tracking-widest hover:bg-ivory transition-all shadow-hard"
-                       >
-                         VIEW PROMPT
-                       </button>
-                    </div>
-                 </div>
-              </div>
-
-              {/* CARD FOOTER (Optional, keeping it clean for brutalist look) */}
-              <div className="h-2 bg-black w-full" />
-           </div>
-         ))}
-      </div>
-
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+            {filteredItems.map(item => (
+              <button
+                key={item.id}
+                onClick={() => setSelected(item)}
+                className="group bg-ivory border-2 border-black shadow-hard overflow-hidden text-left flex flex-col"
+              >
+                <div className="relative h-72 bg-black overflow-hidden">
+                  {item.mediaType === 'video' ? (
+                    <video
+                      src={item.url}
+                      controls
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <img
+                      src={item.url}
+                      alt={item.caption}
+                      className="h-full w-full object-cover"
+                    />
+                  )}
+                </div>
+                <div className="p-6 flex-grow flex flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[8px] font-bold uppercase tracking-widest bg-black text-ivory px-2 py-1">{item.contentType}</span>
+                    <span className="text-[8px] font-bold uppercase tracking-widest opacity-40">{item.campaignName}</span>
+                  </div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">{item.date}</p>
+                  <p className="text-sm text-black leading-snug overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                    {item.caption || item.prompt || 'No caption available.'}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       <AnimatePresence>
-        {remixItem && (
-          <RemixPanel 
-             item={remixItem} 
-             onClose={() => setRemixItem(null)} 
-             canRemix={canRemix}
-             onRemix={onRemix}
-          />
-        )}
-        {showAddModal && (
-          <AddToGalleryModal 
-             onCancel={() => setShowAddModal(false)}
-             onSubmit={(newItem) => {
-               onUpdateGallery([newItem, ...gallery]);
-               setShowAddModal(false);
-             }}
-          />
-        )}
-        {viewPromptId && (
-          <ViewPromptModal 
-            prompt={gallery.find(g => g.id === viewPromptId)?.prompt || ''} 
-            onClose={() => setViewPromptId(null)} 
-          />
+        {selected && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] bg-black/90 flex items-center justify-center p-6"
+          >
+            <button
+              onClick={() => setSelected(null)}
+              className="absolute top-6 right-6 bg-white border-2 border-black rounded-none p-3 font-bold uppercase tracking-widest"
+            >
+              CLOSE
+            </button>
+            <div className="relative max-w-[1400px] w-full grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-8">
+              <div className="bg-black border-2 border-white overflow-hidden">
+                {selected.mediaType === 'video' ? (
+                  <video src={selected.url} controls autoPlay className="w-full h-full object-contain bg-black" />
+                ) : (
+                  <img src={selected.url} alt={selected.caption} className="w-full h-full object-contain bg-black" />
+                )}
+              </div>
+              <div className="bg-white border-2 border-black p-8 flex flex-col gap-6">
+                <div>
+                  <span className="text-[8px] font-bold uppercase tracking-widest opacity-40">{selected.contentType}</span>
+                  <h2 className="text-4xl font-display uppercase tracking-tighter mt-3">{selected.campaignName}</h2>
+                  <p className="text-[8px] uppercase tracking-widest opacity-40 mt-2">{selected.date}</p>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <span className="text-[8px] font-bold uppercase tracking-widest opacity-40">Full Caption</span>
+                    <p className="mt-3 text-sm leading-relaxed">{selected.caption || 'No caption available.'}</p>
+                  </div>
+                  <div>
+                    <span className="text-[8px] font-bold uppercase tracking-widest opacity-40">Prompt</span>
+                    <p className="mt-3 text-sm leading-relaxed">{selected.prompt || 'No prompt stored.'}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function WorkstationPage({ campaigns, onboardingData }: { campaigns: Campaign[]; onboardingData: any }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [agentState, setAgentState] = useState('idle');
+  const [workspaceName, setWorkspaceName] = useState('NO ACTIVE WORKSPACE');
+  const [workspaceStatus, setWorkspaceStatus] = useState('idle');
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [thumbnail, setThumbnail] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const activeCampaign = campaigns.find(c => c.status === 'active') || campaigns[0] || null;
+
+  useEffect(() => {
+    if (activeCampaign) {
+      setWorkspaceName(activeCampaign.name);
+      setWorkspaceStatus(activeCampaign.status);
+      setWorkspaceId(activeCampaign.id);
+    } else {
+      setWorkspaceName('NO ACTIVE WORKSPACE');
+      setWorkspaceStatus('inactive');
+      setWorkspaceId(null);
+    }
+  }, [activeCampaign]);
+
+  useEffect(() => {
+    let renderer: WebGLRenderer | null = null;
+    let scene: Scene | null = null;
+    let camera: PerspectiveCamera | null = null;
+    let frameId: number;
+    const boxes: Mesh[] = [];
+
+    if (!containerRef.current) return;
+    const container = containerRef.current;
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+
+    scene = new Scene();
+    scene.background = new Color('#000000');
+
+    camera = new PerspectiveCamera(50, width / height, 0.1, 1000);
+    camera.position.set(0, 12, 28);
+    camera.lookAt(0, 0, 0);
+
+    renderer = new WebGLRenderer({ antialias: true });
+    renderer.setSize(width, height, false);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    container.appendChild(renderer.domElement);
+
+    const ambientLight = new AmbientLight(0xffffff, 0.4);
+    scene.add(ambientLight);
+    const pointLight = new PointLight(onboardingData?.colors?.[0] || '#FFBF00', 1.4, 100);
+    pointLight.position.set(10, 20, 10);
+    scene.add(pointLight);
+
+    const boxMaterial = new MeshBasicMaterial({ color: 0xffffff, wireframe: true });
+    for (let i = 0; i < 4; i += 1) {
+      const box = new Mesh(new BoxGeometry(4 + i, 4 + i, 4 + i), boxMaterial);
+      box.position.set((i - 1.5) * 6, Math.sin(i) * 2, (i - 1.5) * -4);
+      scene.add(box);
+      boxes.push(box);
+    }
+
+    const particleCount = 200;
+    const particlesGeometry = new BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
+    for (let i = 0; i < particleCount; i += 1) {
+      positions[i * 3 + 0] = (Math.random() - 0.5) * 80;
+      positions[i * 3 + 1] = (Math.random() - 0.5) * 40;
+      positions[i * 3 + 2] = (Math.random() - 0.5) * 80;
+    }
+    particlesGeometry.setAttribute('position', new BufferAttribute(positions, 3));
+    const particles = new Points(particlesGeometry, new PointsMaterial({ color: 0xffffff, size: 0.2 }));
+    scene.add(particles);
+
+    const handleResize = () => {
+      if (!container || !camera || !renderer) return;
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h, false);
+    };
+    window.addEventListener('resize', handleResize);
+
+    const animate = () => {
+      const time = performance.now() * 0.0003;
+      boxes.forEach((box, index) => {
+        box.rotation.x = time * (0.4 + index * 0.1);
+        box.rotation.y = time * (0.6 + index * 0.05);
+      });
+      particles.rotation.y = time * 0.06;
+      if (camera) {
+        camera.position.x = Math.cos(time * 0.4) * 28;
+        camera.position.z = Math.sin(time * 0.4) * 28;
+        camera.position.y = 10 + Math.sin(time * 0.6) * 2;
+        camera.lookAt(0, 0, 0);
+      }
+      if (renderer && scene && camera) {
+        renderer.render(scene, camera);
+      }
+      frameId = requestAnimationFrame(animate);
+    };
+
+    animate();
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      window.removeEventListener('resize', handleResize);
+      if (renderer) {
+        renderer.dispose();
+        renderer.domElement.remove();
+      }
+      if (scene) {
+        scene.clear();
+      }
+    };
+  }, [onboardingData]);
+
+  useEffect(() => {
+    if (!auth.currentUser || !workspaceId) return;
+    let canceled = false;
+    const fetchState = async () => {
+      try {
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'campaigns', workspaceId);
+        const snap = await getDoc(docRef);
+        if (!snap.exists() || canceled) return;
+        const data = snap.data();
+        setAgentState(data?.agentState || 'idle');
+        setThumbnail(data?.lastGeneratedThumbnail || null);
+      } catch (err) {
+        console.error('Failed to poll agentState:', err);
+      }
+    };
+    fetchState();
+    const interval = setInterval(fetchState, 5000);
+    return () => {
+      canceled = true;
+      clearInterval(interval);
+    };
+  }, [workspaceId]);
+
+  const handleDecision = async (action: 'approve' | 'reject') => {
+    if (!auth.currentUser || !workspaceId || isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      await fetch(`https://dod-paying-discipline-items.trycloudflare.com/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: auth.currentUser.uid, workspaceId })
+      });
+    } catch (err) {
+      console.error(`Failed to ${action}:`, err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="relative border-2 border-black bg-black min-h-[640px] shadow-hard overflow-hidden">
+      <div ref={containerRef} className="absolute inset-0" />
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="p-6 flex items-start justify-between gap-6 pointer-events-auto">
+          <div className="space-y-3 bg-black/60 border-2 border-white p-4">
+            <p className="text-[8px] font-bold uppercase tracking-widest opacity-40">WORKSPACE</p>
+            <h2 className="text-3xl font-display uppercase tracking-tighter">{workspaceName}</h2>
+            <span className="inline-flex px-3 py-1 border-2 border-white text-[8px] font-bold uppercase tracking-widest bg-amber text-black">{workspaceStatus?.toUpperCase()}</span>
+          </div>
+          <div className="space-y-3 text-right bg-black/60 border-2 border-white p-4">
+            <p className="text-[8px] font-bold uppercase tracking-widest opacity-40">AGENT STATE</p>
+            <p className="text-xl font-bold uppercase tracking-widest">{agentState.toUpperCase()}</p>
+          </div>
+        </div>
+
+        {agentState === 'awaiting_approval' && (
+          <div className="absolute left-1/2 bottom-6 -translate-x-1/2 flex flex-col md:flex-row gap-4 pointer-events-auto">
+            <button
+              onClick={() => handleDecision('approve')}
+              className="px-8 py-4 bg-deep-red text-ivory font-bold uppercase text-xs tracking-widest shadow-hard hover:bg-black transition-all"
+            >
+              APPROVE
+            </button>
+            <button
+              onClick={() => handleDecision('reject')}
+              className="px-8 py-4 bg-white text-black font-bold uppercase text-xs tracking-widest shadow-hard hover:bg-amber transition-all"
+            >
+              REJECT
+            </button>
+          </div>
+        )}
+
+        {thumbnail && (
+          <img
+            src={thumbnail}
+            alt="Latest content thumbnail"
+            className="absolute bottom-6 left-6 w-28 h-auto border-2 border-white shadow-hard pointer-events-auto"
+          />
+        )}
+
+        {!workspaceId && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <p className="text-5xl font-display uppercase tracking-widest text-white/80">NO ACTIVE WORKSPACE</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -3269,7 +3572,7 @@ function DashboardPlaceholder({
            <img src="/logo.png" alt="VEGA AI" className="h-[250px] w-[200px] pl-0 -ml-[35px] object-contain shrink-0" />
         </div>
         <nav className="flex-grow py-8 flex flex-col overflow-y-auto">
-          {['Dashboard', 'Workspaces', 'Workstation', 'Settings'].map(it => (
+          {['Dashboard', 'Workspaces', 'Gallery', 'Workstation', 'Settings'].map(it => (
             <button 
               key={it} 
               onClick={() => setActiveTab(it)}
@@ -3277,6 +3580,8 @@ function DashboardPlaceholder({
             >
               {it === 'Dashboard' && <Layout size={16} />}
               {it === 'Workspaces' && <Briefcase size={16} />}
+              {it === 'Gallery' && <LucideImage size={16} />}
+              {it === 'Gallery' && <LucideImage size={16} />}
               {it === 'Workstation' && <Sparkles size={16} />}
               {it === 'Settings' && <Settings size={16} />}
               {it}
@@ -3301,7 +3606,9 @@ function DashboardPlaceholder({
               {onboardingData?.brandName || 'VEGA AI'} / {activeTab}
             </p>
             <h1 className="text-7xl lg:text-8xl font-display tracking-tighter leading-none uppercase">
-                {activeTab === 'Workspaces' ? 'YOUR WORKSPACES' :
+                {activeTab === 'Gallery' ? 'GALLERY' :
+                 activeTab === 'Workspaces' ? 'YOUR WORKSPACES' :
+                 activeTab === 'Gallery' ? 'GALLERY' :
                  activeTab === 'Workstation' ? 'WORKSTATION' :
                  activeTab === 'Settings' ? 'SETTINGS' :
                  'COMMAND CENTER'}
@@ -3427,15 +3734,11 @@ function DashboardPlaceholder({
         )}
 
         {activeTab === 'Workstation' && (
-          <div className="border-2 border-black p-12 bg-ivory shadow-hard min-h-[500px] flex flex-col items-center justify-center text-center">
-             <div className="w-20 h-20 bg-amber border-2 border-black shadow-[4px_4px_0px_#000] flex items-center justify-center mb-8 rotate-3">
-               <Sparkles className="text-black animate-pulse" size={32} />
-             </div>
-             <h3 className="text-4xl font-display mb-4 text-black animate-pulse">AGENT WORKSTATION</h3>
-             <p className="text-sm font-bold uppercase tracking-widest text-black/40 max-w-sm leading-relaxed px-4 text-center">
-               Your agents (Brand Agent, Content Agent, and Scout Agent) are currently in synchronization. Approve and review your raw brand ideas right here.
-             </p>
-          </div>
+          <WorkstationPage campaigns={campaigns} onboardingData={onboardingData} />
+        )}
+
+        {activeTab === 'Gallery' && (
+          <GalleryPage />
         )}
 
         {activeTab === 'Settings' && (
