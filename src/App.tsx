@@ -2891,9 +2891,9 @@ function GalleryPage() {
           const gallerySnap = await getDocs(collection(db, 'users', auth.currentUser.uid, 'campaigns', campaignDoc.id, 'gallery'));
           gallerySnap.docs.forEach(itemDoc => {
             const data = itemDoc.data() as any;
-            const url = data.url || data.imageUrl || '';
+            const url = data.mediaUrl || data.url || data.imageUrl || '';
             const extension = url.split('.').pop()?.toLowerCase() || '';
-            const mediaType = data.type === 'video' || extension === 'mp4' ? 'video' : 'image';
+            const mediaType = data.contentType === 'video' || data.type === 'video' || extension === 'mp4' ? 'video' : 'image';
             const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt ? new Date(data.createdAt) : null;
             galleryItems.push({
               id: `${campaignDoc.id}-${itemDoc.id}`,
