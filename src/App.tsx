@@ -3241,7 +3241,7 @@ function WorkstationPage({ campaigns, onboardingData }: {
         <OfficeModel />
         {/* Brand Agent — Brand HQ left room */}
         <AgentCharacter
-          position={[-4.5, 0.18, 0.5]}
+          position={[-5.5, 0.18, 1.5]}
           color="#FFBF00"
           isActive={['checkin_pending', 'checkin_done'].includes(agentState)}
         />
@@ -3253,7 +3253,7 @@ function WorkstationPage({ campaigns, onboardingData }: {
         />
         {/* Scout Agent — Scout Tower bottom right */}
         <AgentCharacter
-          position={[4.5, 0.18, 2.5]}
+          position={[3.5, 0.18, 4.0]}
           color="#ff4444"
           isActive={false}
           alwaysActive={true}
