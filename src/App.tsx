@@ -3149,6 +3149,13 @@ function OfficeModel() {
     console.log('Model size:', size);
     const center = box.getCenter(new THREE.Vector3());
     console.log('Model center:', center);
+    
+    scene.traverse((child: any) => {
+      if (child.isMesh) {
+        console.log('Mesh:', child.name, 'pos:', 
+          child.getWorldPosition(new THREE.Vector3()));
+      }
+    });
   }, [scene]);
   return <primitive object={scene} scale={20} position={[0, -1, 0]} />;
 }
