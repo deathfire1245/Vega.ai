@@ -3045,13 +3045,15 @@ function GalleryPage() {
   );
 }
 
-function AgentCharacter({ 
-  position, 
-  color, 
-  isActive, 
-  alwaysActive = false 
-}: { 
+function AgentCharacter({
+  position,
+  rotation = [0, 0, 0],
+  color,
+  isActive,
+  alwaysActive = false
+}: {
   position: [number, number, number];
+  rotation?: [number, number, number];
   color: string;
   isActive: boolean;
   alwaysActive?: boolean;
@@ -3085,7 +3087,7 @@ function AgentCharacter({
   });
 
   return (
-    <group ref={groupRef} position={position} scale={2.5}>
+    <group ref={groupRef} position={position} rotation={rotation} scale={2.5}>
       {/* Head */}
       <mesh ref={headRef} position={[0, 0.28, 0]}>
         <sphereGeometry args={[0.1, 16, 16]} />
@@ -3241,19 +3243,19 @@ function WorkstationPage({ campaigns, onboardingData }: {
         <OfficeModel />
         {/* Brand Agent — Brand HQ left room */}
         <AgentCharacter
-          position={[-4.5, -0.5, -2.0]}
+          position={[-5, -0.5, -2]}
           color="#FFBF00"
           isActive={['checkin_pending', 'checkin_done'].includes(agentState)}
         />
         {/* Content Agent — Content Studio center */}
         <AgentCharacter
-          position={[0.9, -0.5, -5.0]}
+          position={[5, -0.5, -5]}
           color="#ffffff"
           isActive={['generating', 'awaiting_approval', 'approved'].includes(agentState)}
         />
         {/* Scout Agent — Scout Tower bottom right */}
         <AgentCharacter
-          position={[-1.0, -0.5, 4.5]}
+          position={[-5, -0.5, 2]}
           color="#ff4444"
           isActive={false}
           alwaysActive={true}
