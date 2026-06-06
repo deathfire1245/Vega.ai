@@ -3143,13 +3143,13 @@ function WorkstationPage({ campaigns, onboardingData }: {
       
       {/* 3D Canvas */}
       <Canvas
-        camera={{ position: [8, 6, 8], fov: 50, near: 0.1, far: 1000 }}
+        camera={{ position: [12, 10, 12], fov: 45, near: 0.1, far: 1000 }}
         style={{ background: '#0a0a0a' }}
       >
-        <ambientLight intensity={0.3} color="#1a1a1a" />
-        <pointLight position={[-4, 4, -4]} intensity={1.5} color="#FFBF00" />
-        <pointLight position={[4, 4, -4]} intensity={1.2} color="#FFBF00" />
-        <pointLight position={[0, 4, 4]} intensity={1.0} color="#ff8c00" />
+        <ambientLight intensity={2} color="#ffffff" />
+        <directionalLight position={[10, 20, 10]} intensity={3} color="#ffffff" />
+        <directionalLight position={[-10, 10, -10]} intensity={1.5} color="#FFBF00" />
+        <pointLight position={[0, 8, 0]} intensity={2} color="#FFBF00" />
         <OfficeModel />
         <OrbitControls 
           enablePan={false}
