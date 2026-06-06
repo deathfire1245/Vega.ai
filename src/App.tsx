@@ -3085,7 +3085,7 @@ function AgentCharacter({
   });
 
   return (
-    <group ref={groupRef} position={position}>
+    <group ref={groupRef} position={position} scale={2.5}>
       {/* Head */}
       <mesh ref={headRef} position={[0, 0.28, 0]}>
         <sphereGeometry args={[0.1, 16, 16]} />
@@ -3231,7 +3231,7 @@ function WorkstationPage({ campaigns, onboardingData }: {
       
       {/* 3D Canvas */}
       <Canvas
-        camera={{ position: [18, 16, 18], fov: 40, near: 0.1, far: 1000 }}
+        camera={{ position: [22, 20, 22], fov: 45, near: 0.1, far: 1000 }}
         style={{ background: '#0a0a0a' }}
       >
         <ambientLight intensity={2} color="#ffffff" />
