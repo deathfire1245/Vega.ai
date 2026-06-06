@@ -3149,13 +3149,6 @@ function OfficeModel() {
     console.log('Model size:', size);
     const center = box.getCenter(new THREE.Vector3());
     console.log('Model center:', center);
-    
-    scene.traverse((child: any) => {
-      if (child.isMesh) {
-        console.log('Mesh:', child.name, 'pos:', 
-          child.getWorldPosition(new THREE.Vector3()));
-      }
-    });
   }, [scene]);
   return <primitive object={scene} scale={20} position={[0, -1, 0]} />;
 }
@@ -3248,19 +3241,19 @@ function WorkstationPage({ campaigns, onboardingData }: {
         <OfficeModel />
         {/* Brand Agent — Brand HQ left room */}
         <AgentCharacter
-          position={[-6.5, 0.18, -1.0]}
+          position={[-5.0, -0.5, -3.0]}
           color="#FFBF00"
           isActive={['checkin_pending', 'checkin_done'].includes(agentState)}
         />
         {/* Content Agent — Content Studio center */}
         <AgentCharacter
-          position={[0.0, 0.18, -1.5]}
+          position={[1.0, -0.5, -3.0]}
           color="#ffffff"
           isActive={['generating', 'awaiting_approval', 'approved'].includes(agentState)}
         />
         {/* Scout Agent — Scout Tower bottom right */}
         <AgentCharacter
-          position={[5.5, 0.18, 1.0]}
+          position={[4.0, -0.5, 5.0]}
           color="#ff4444"
           isActive={false}
           alwaysActive={true}
