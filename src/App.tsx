@@ -3062,7 +3062,7 @@ function OfficeModel() {
     const center = box.getCenter(new THREE.Vector3());
     console.log('Model center:', center);
   }, [scene]);
-  return <primitive object={scene} scale={15} position={[0, -1, 0]} />;
+  return <primitive object={scene} scale={20} position={[0, -1, 0]} />;
 }
 
 function WorkstationPage({ campaigns, onboardingData }: { 
@@ -3143,13 +3143,13 @@ function WorkstationPage({ campaigns, onboardingData }: {
       
       {/* 3D Canvas */}
       <Canvas
-        camera={{ position: [12, 10, 12], fov: 45, near: 0.1, far: 1000 }}
+        camera={{ position: [18, 16, 18], fov: 40, near: 0.1, far: 1000 }}
         style={{ background: '#0a0a0a' }}
       >
         <ambientLight intensity={2} color="#ffffff" />
         <directionalLight position={[10, 20, 10]} intensity={3} color="#ffffff" />
         <directionalLight position={[-10, 10, -10]} intensity={1.5} color="#FFBF00" />
-        <pointLight position={[0, 8, 0]} intensity={2} color="#FFBF00" />
+        <pointLight position={[0, 8, 0]} intensity={0.6} color="#FFBF00" />
         <OfficeModel />
         <OrbitControls 
           enablePan={false}
