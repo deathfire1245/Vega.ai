@@ -3241,19 +3241,19 @@ function WorkstationPage({ campaigns, onboardingData }: {
         <OfficeModel />
         {/* Brand Agent — Brand HQ left room */}
         <AgentCharacter
-          position={[-3.5, 0.18, -1.5]}
+          position={[-4.5, 0.18, 0.5]}
           color="#FFBF00"
           isActive={['checkin_pending', 'checkin_done'].includes(agentState)}
         />
         {/* Content Agent — Content Studio center */}
         <AgentCharacter
-          position={[0.5, 0.18, -1.0]}
+          position={[1.5, 0.18, -2.0]}
           color="#ffffff"
           isActive={['generating', 'awaiting_approval', 'approved'].includes(agentState)}
         />
         {/* Scout Agent — Scout Tower bottom right */}
         <AgentCharacter
-          position={[2.5, 0.18, 2.0]}
+          position={[4.5, 0.18, 2.5]}
           color="#ff4444"
           isActive={false}
           alwaysActive={true}
