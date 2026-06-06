@@ -28,10 +28,13 @@ import {
   GoogleAuthProvider,
   signInWithPopup
 } from "firebase/auth";
-import { doc, getDoc, setDoc, serverTimestamp, collection, addDoc, getDocs, query, orderBy, limit, updateDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, serverTimestamp, collection, addDoc, getDocs, query, orderBy, limit, updateDoc, where } from "firebase/firestore";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useBrandBrain } from "./hooks/useBrandBrain";
 import { generateContentPack } from "./services/groqService";
+import { Canvas, useFrame } from '@react-three/fiber';
+import { useGLTF, OrbitControls, Environment } from '@react-three/drei';
+import * as THREE from 'three';
 
 type AppView = 'landing' | 'auth' | 'onboarding' | 'dashboard' | 'new-campaign';
 const tier = 'creator';
@@ -3042,13 +3045,209 @@ function GalleryPage() {
   );
 }
 
-function WorkstationPage({ campaigns, onboardingData }: { campaigns: Campaign[]; onboardingData: any }) {
+function OfficeModel() {
+  const { scene } = useGLTF('/models/office.glb');
+  useEffect(() => {
+    scene.traverse((child: any) => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+    // Log bounding box so we can see actual model size
+    const box = new THREE.Box3().setFromObject(scene);
+    console.log('Model bounds:', box.min, box.max);
+    const size = box.getSize(new THREE.Vector3());
+    console.log('Model size:', size);
+    const center = box.getCenter(new THREE.Vector3());
+    console.log('Model center:', center);
+  }, [scene]);
+  return <primitive object={scene} scale={15} position={[0, -1, 0]} />;
+}
+
+function WorkstationPage({ campaigns, onboardingData }: { 
+  campaigns: Campaign[]; 
+  onboardingData: any 
+}) {
+  const [agentState, setAgentState] = useState('idle');
+  const [workspaceName, setWorkspaceName] = useState('NO ACTIVE WORKSPACE');
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const activeCampaign = campaigns.find(c => c.status === 'active') || null;
+
+  useEffect(() => {
+    if (activeCampaign) {
+      setWorkspaceName(activeCampaign.name);
+      setWorkspaceId(activeCampaign.id);
+    }
+  }, [activeCampaign]);
+
+  useEffect(() => {
+    if (!workspaceId || !auth.currentUser) return;
+    const interval = setInterval(async () => {
+      try {
+        const snap = await getDocs(
+          query(
+            collection(db, 'users', auth.currentUser!.uid, 'campaigns'),
+            where('status', '==', 'active')
+          )
+        );
+        if (!snap.empty) {
+          const data = snap.docs[0].data();
+          setAgentState(data.agentState || 'idle');
+        }
+      } catch (e) {}
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [workspaceId]);
+
+  const handleApprove = async () => {
+    if (!workspaceId || !auth.currentUser) return;
+    setIsSubmitting(true);
+    try {
+      await fetch('https://dod-paying-discipline-items.trycloudflare.com/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: auth.currentUser.uid, workspaceId })
+      });
+    } catch (e) {} finally { setIsSubmitting(false); }
+  };
+
+  const handleReject = async () => {
+    if (!workspaceId || !auth.currentUser) return;
+    setIsSubmitting(true);
+    try {
+      await fetch('https://dod-paying-discipline-items.trycloudflare.com/reject', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: auth.currentUser.uid, workspaceId })
+      });
+    } catch (e) {} finally { setIsSubmitting(false); }
+  };
+
+  const stateColor = {
+    idle: '#666',
+    checkin_pending: '#FFBF00',
+    checkin_done: '#FFBF00',
+    generating: '#ff8c00',
+    awaiting_approval: '#00ff88',
+    approved: '#00ff88',
+    scout_ready: '#FFBF00',
+    done: '#00ff88',
+    terminated: '#ff4444',
+  }[agentState] || '#666';
+
   return (
-    <div className="flex-1 bg-black flex flex-col items-center justify-center">
-      <div className="text-center">
-        <h2 className="text-5xl font-display uppercase tracking-widest text-white mb-6">WORKSTATION COMING SOON</h2>
-        <p className="text-lg text-white/60 uppercase tracking-wider">Your 3D command center is being built.</p>
+    <div style={{ position: 'relative', width: '100%', height: '75vh', 
+      background: '#0a0a0a', border: '2px solid black' }}>
+      
+      {/* 3D Canvas */}
+      <Canvas
+        camera={{ position: [8, 6, 8], fov: 50, near: 0.1, far: 1000 }}
+        style={{ background: '#0a0a0a' }}
+      >
+        <ambientLight intensity={0.3} color="#1a1a1a" />
+        <pointLight position={[-4, 4, -4]} intensity={1.5} color="#FFBF00" />
+        <pointLight position={[4, 4, -4]} intensity={1.2} color="#FFBF00" />
+        <pointLight position={[0, 4, 4]} intensity={1.0} color="#ff8c00" />
+        <OfficeModel />
+        <OrbitControls 
+          enablePan={false}
+          enableZoom={true}
+          minPolarAngle={Math.PI / 6}
+          maxPolarAngle={Math.PI / 3}
+          target={[0, 0, 0]}
+        />
+      </Canvas>
+
+      {/* Top left — workspace name + state */}
+      <div style={{ 
+        position: 'absolute', top: 16, left: 16, 
+        fontFamily: 'monospace', pointerEvents: 'none' 
+      }}>
+        <div style={{ 
+          background: '#000', border: '2px solid #FFBF00', 
+          padding: '8px 14px', marginBottom: 8 
+        }}>
+          <div style={{ 
+            color: '#FFBF00', fontSize: 11, 
+            fontWeight: 900, letterSpacing: 3, marginBottom: 4 
+          }}>
+            WORKSPACE
+          </div>
+          <div style={{ color: '#fff', fontSize: 14, fontWeight: 700 }}>
+            {workspaceName}
+          </div>
+        </div>
+        <div style={{ 
+          background: '#000', border: `2px solid ${stateColor}`, 
+          padding: '6px 12px', display: 'inline-block' 
+        }}>
+          <span style={{ 
+            color: stateColor, fontSize: 10, 
+            fontWeight: 900, letterSpacing: 2 
+          }}>
+            ● {agentState.replace(/_/g, ' ').toUpperCase()}
+          </span>
+        </div>
       </div>
+
+      {/* Approve/Reject — only when awaiting */}
+      {agentState === 'awaiting_approval' && (
+        <div style={{ 
+          position: 'absolute', bottom: 24, left: '50%', 
+          transform: 'translateX(-50%)', 
+          display: 'flex', gap: 12, pointerEvents: 'auto' 
+        }}>
+          <button
+            onClick={handleApprove}
+            disabled={isSubmitting}
+            style={{ 
+              background: '#00ff88', color: '#000', border: '2px solid #000',
+              padding: '10px 28px', fontWeight: 900, fontSize: 12,
+              letterSpacing: 3, cursor: 'pointer',
+              boxShadow: '4px 4px 0px #000'
+            }}
+          >
+            ✓ APPROVE
+          </button>
+          <button
+            onClick={handleReject}
+            disabled={isSubmitting}
+            style={{ 
+              background: '#ff4444', color: '#fff', border: '2px solid #000',
+              padding: '10px 28px', fontWeight: 900, fontSize: 12,
+              letterSpacing: 3, cursor: 'pointer',
+              boxShadow: '4px 4px 0px #000'
+            }}
+          >
+            ✕ REJECT
+          </button>
+        </div>
+      )}
+
+      {/* No active workspace overlay */}
+      {!activeCampaign && (
+        <div style={{ 
+          position: 'absolute', inset: 0, 
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          pointerEvents: 'none'
+        }}>
+          <div style={{ 
+            background: 'rgba(0,0,0,0.85)', border: '2px solid #FFBF00',
+            padding: '24px 40px', textAlign: 'center'
+          }}>
+            <div style={{ 
+              color: '#FFBF00', fontSize: 13, fontWeight: 900, letterSpacing: 4 
+            }}>
+              NO ACTIVE WORKSPACE
+            </div>
+            <div style={{ color: '#666', fontSize: 11, marginTop: 8, letterSpacing: 2 }}>
+              DEPLOY A WORKSPACE TO BEGIN
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
