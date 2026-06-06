@@ -3045,6 +3045,94 @@ function GalleryPage() {
   );
 }
 
+function AgentCharacter({ 
+  position, 
+  color, 
+  isActive, 
+  alwaysActive = false 
+}: { 
+  position: [number, number, number];
+  color: string;
+  isActive: boolean;
+  alwaysActive?: boolean;
+}) {
+  const groupRef = useRef<any>(null);
+  const leftArmRef = useRef<any>(null);
+  const rightArmRef = useRef<any>(null);
+  const headRef = useRef<any>(null);
+  
+  useFrame((state) => {
+    if (!groupRef.current) return;
+    const t = state.clock.elapsedTime;
+    const active = isActive || alwaysActive;
+    
+    if (active) {
+      // Active: bouncy bob
+      groupRef.current.position.y = position[1] + Math.sin(t * 3) * 0.04;
+      // Arm swing
+      if (leftArmRef.current) leftArmRef.current.rotation.x = Math.sin(t * 3) * 0.4;
+      if (rightArmRef.current) rightArmRef.current.rotation.x = Math.sin(t * 3 + Math.PI) * 0.4;
+      // Head scan (scout behavior)
+      if (alwaysActive && headRef.current) {
+        headRef.current.rotation.y = Math.sin(t * 1.5) * 0.5;
+      }
+    } else {
+      // Idle: gentle breathe
+      groupRef.current.position.y = position[1] + Math.sin(t * 1.2) * 0.01;
+      if (leftArmRef.current) leftArmRef.current.rotation.x = 0;
+      if (rightArmRef.current) rightArmRef.current.rotation.x = 0;
+    }
+  });
+
+  return (
+    <group ref={groupRef} position={position}>
+      {/* Head */}
+      <mesh ref={headRef} position={[0, 0.28, 0]}>
+        <sphereGeometry args={[0.1, 16, 16]} />
+        <meshStandardMaterial color={color} roughness={0.3} metalness={0.1} />
+      </mesh>
+      
+      {/* Torso */}
+      <mesh position={[0, 0.1, 0]}>
+        <boxGeometry args={[0.14, 0.18, 0.1]} />
+        <meshStandardMaterial color={color} roughness={0.3} metalness={0.1} />
+      </mesh>
+      
+      {/* Left Arm */}
+      <mesh ref={leftArmRef} position={[-0.1, 0.1, 0]}>
+        <boxGeometry args={[0.05, 0.15, 0.05]} />
+        <meshStandardMaterial color={color} roughness={0.3} metalness={0.1} />
+      </mesh>
+      
+      {/* Right Arm */}
+      <mesh ref={rightArmRef} position={[0.1, 0.1, 0]}>
+        <boxGeometry args={[0.05, 0.15, 0.05]} />
+        <meshStandardMaterial color={color} roughness={0.3} metalness={0.1} />
+      </mesh>
+      
+      {/* Left Leg */}
+      <mesh position={[-0.05, -0.06, 0]}>
+        <boxGeometry args={[0.055, 0.14, 0.055]} />
+        <meshStandardMaterial color={color} roughness={0.3} metalness={0.1} />
+      </mesh>
+      
+      {/* Right Leg */}
+      <mesh position={[0.05, -0.06, 0]}>
+        <boxGeometry args={[0.055, 0.14, 0.055]} />
+        <meshStandardMaterial color={color} roughness={0.3} metalness={0.1} />
+      </mesh>
+
+      {/* Glow ring under feet when active */}
+      {(isActive || alwaysActive) && (
+        <mesh position={[0, -0.13, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0.12, 0.16, 32]} />
+          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={2} transparent opacity={0.6} />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
 function OfficeModel() {
   const { scene } = useGLTF('/models/office.glb');
   useEffect(() => {
@@ -3151,7 +3239,26 @@ function WorkstationPage({ campaigns, onboardingData }: {
         <directionalLight position={[-10, 10, -10]} intensity={1.5} color="#FFBF00" />
         <pointLight position={[0, 8, 0]} intensity={0.6} color="#FFBF00" />
         <OfficeModel />
-        <OrbitControls 
+        {/* Brand Agent — Brand HQ left room */}
+        <AgentCharacter
+          position={[-3.5, 0.18, -1.5]}
+          color="#FFBF00"
+          isActive={['checkin_pending', 'checkin_done'].includes(agentState)}
+        />
+        {/* Content Agent — Content Studio center */}
+        <AgentCharacter
+          position={[0.5, 0.18, -1.0]}
+          color="#ffffff"
+          isActive={['generating', 'awaiting_approval', 'approved'].includes(agentState)}
+        />
+        {/* Scout Agent — Scout Tower bottom right */}
+        <AgentCharacter
+          position={[2.5, 0.18, 2.0]}
+          color="#ff4444"
+          isActive={false}
+          alwaysActive={true}
+        />
+        <OrbitControls
           enablePan={false}
           enableZoom={true}
           minPolarAngle={Math.PI / 6}
