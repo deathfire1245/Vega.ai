@@ -3087,7 +3087,7 @@ function AgentCharacter({
   });
 
   return (
-    <group ref={groupRef} position={position} rotation={rotation} scale={2.5}>
+    <group ref={groupRef} position={position} rotation={[0, Math.PI / 2, 0]} scale={2.5}>
       {/* Head */}
       <mesh ref={headRef} position={[0, 0.28, 0]}>
         <sphereGeometry args={[0.1, 16, 16]} />
@@ -3249,13 +3249,13 @@ function WorkstationPage({ campaigns, onboardingData }: {
         />
         {/* Content Agent — Content Studio center */}
         <AgentCharacter
-          position={[5, -0.5, -5]}
+          position={[0.5, -0.5, -5]}
           color="#ffffff"
           isActive={['generating', 'awaiting_approval', 'approved'].includes(agentState)}
         />
         {/* Scout Agent — Scout Tower bottom right */}
         <AgentCharacter
-          position={[-5, -0.5, 2]}
+          position={[-1, -0.5, 4]}
           color="#ff4444"
           isActive={false}
           alwaysActive={true}
