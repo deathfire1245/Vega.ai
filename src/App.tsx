@@ -3069,20 +3069,25 @@ function AgentCharacter({
     const active = isActive || alwaysActive;
     
     if (active) {
-      // Active: bouncy bob
-      groupRef.current.position.y = position[1] + Math.sin(t * 3) * 0.04;
+      // Very visible bounce
+      groupRef.current.position.y = position[1] + Math.sin(t * 4) * 0.15;
+      // Head bobbing
+      if (headRef.current) {
+        headRef.current.rotation.z = Math.sin(t * 4) * 0.2;
+      }
       // Arm swing
-      if (leftArmRef.current) leftArmRef.current.rotation.x = Math.sin(t * 3) * 0.4;
-      if (rightArmRef.current) rightArmRef.current.rotation.x = Math.sin(t * 3 + Math.PI) * 0.4;
-      // Head scan (scout behavior)
+      if (leftArmRef.current) leftArmRef.current.rotation.x = Math.sin(t * 4) * 0.6;
+      if (rightArmRef.current) rightArmRef.current.rotation.x = Math.sin(t * 4 + Math.PI) * 0.6;
+      // Scout head scan
       if (alwaysActive && headRef.current) {
-        headRef.current.rotation.y = Math.sin(t * 1.5) * 0.5;
+        headRef.current.rotation.y = Math.sin(t * 2) * 0.8;
       }
     } else {
-      // Idle: gentle breathe
-      groupRef.current.position.y = position[1] + Math.sin(t * 1.2) * 0.01;
+      // Idle: slow breathe, still visible
+      groupRef.current.position.y = position[1] + Math.sin(t * 1.5) * 0.05;
       if (leftArmRef.current) leftArmRef.current.rotation.x = 0;
       if (rightArmRef.current) rightArmRef.current.rotation.x = 0;
+      if (headRef.current) headRef.current.rotation.z = 0;
     }
   });
 
