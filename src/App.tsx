@@ -33,7 +33,7 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useBrandBrain } from "./hooks/useBrandBrain";
 import { generateContentPack } from "./services/groqService";
 import { Canvas, useFrame } from '@react-three/fiber';
-import { useGLTF, OrbitControls, Environment } from '@react-three/drei';
+import { useGLTF, OrbitControls, Environment, Html } from '@react-three/drei';
 import * as THREE from 'three';
 
 type AppView = 'landing' | 'auth' | 'onboarding' | 'dashboard' | 'new-campaign';
@@ -3050,18 +3050,23 @@ function AgentCharacter({
   rotation = [0, 0, 0],
   color,
   isActive,
-  alwaysActive = false
+  alwaysActive = false,
+  label,
+  lastRan
 }: {
   position: [number, number, number];
   rotation?: [number, number, number];
   color: string;
   isActive: boolean;
   alwaysActive?: boolean;
+  label: string;
+  lastRan?: string;
 }) {
   const groupRef = useRef<any>(null);
   const leftArmRef = useRef<any>(null);
   const rightArmRef = useRef<any>(null);
   const headRef = useRef<any>(null);
+  const [hovered, setHovered] = useState(false);
   
   useFrame((state) => {
     if (!groupRef.current) return;
@@ -3092,7 +3097,14 @@ function AgentCharacter({
   });
 
   return (
-    <group ref={groupRef} position={position} rotation={[0, Math.PI / 2, 0]} scale={2.5}>
+    <group
+      ref={groupRef}
+      position={position}
+      rotation={[0, Math.PI / 2, 0]}
+      scale={2.5}
+      onPointerOver={() => { setHovered(true); document.body.style.cursor = 'pointer'; }}
+      onPointerOut={() => { setHovered(false); document.body.style.cursor = 'auto'; }}
+    >
       {/* Head */}
       <mesh ref={headRef} position={[0, 0.28, 0]}>
         <sphereGeometry args={[0.1, 16, 16]} />
@@ -3135,6 +3147,31 @@ function AgentCharacter({
           <ringGeometry args={[0.12, 0.16, 32]} />
           <meshStandardMaterial color={color} emissive={color} emissiveIntensity={2} transparent opacity={0.6} />
         </mesh>
+      )}
+      {hovered && (
+        <Html position={[0, 1.2, 0]} center distanceFactor={8}>
+          <div style={{
+            background: '#000',
+            border: '2px solid #FFBF00',
+            padding: '8px 12px',
+            fontFamily: 'monospace',
+            whiteSpace: 'nowrap',
+            pointerEvents: 'none',
+            minWidth: '140px'
+          }}>
+            <div style={{ color: '#FFBF00', fontSize: 10, fontWeight: 900, letterSpacing: 2, marginBottom: 4 }}>
+              {label}
+            </div>
+            <div style={{ color: '#fff', fontSize: 11, fontWeight: 700 }}>
+              {(isActive || alwaysActive) ? '● ACTIVE' : '○ IDLE'}
+            </div>
+            {lastRan && (
+              <div style={{ color: '#666', fontSize: 10, marginTop: 4, letterSpacing: 1 }}>
+                {lastRan}
+              </div>
+            )}
+          </div>
+        </Html>
       )}
     </group>
   );
@@ -3251,12 +3288,16 @@ function WorkstationPage({ campaigns, onboardingData }: {
           position={[-5, -0.5, -2]}
           color="#FFBF00"
           isActive={['checkin_pending', 'checkin_done'].includes(agentState)}
+          label="BRAND AGENT"
+          lastRan="Check-in daily"
         />
         {/* Content Agent — Content Studio center */}
         <AgentCharacter
           position={[0.5, -0.5, -5]}
           color="#ffffff"
           isActive={['generating', 'awaiting_approval', 'approved'].includes(agentState)}
+          label="CONTENT AGENT"
+          lastRan="Generates content"
         />
         {/* Scout Agent — Scout Tower bottom right */}
         <AgentCharacter
@@ -3264,6 +3305,8 @@ function WorkstationPage({ campaigns, onboardingData }: {
           color="#ff4444"
           isActive={false}
           alwaysActive={true}
+          label="SCOUT AGENT"
+          lastRan="Always watching"
         />
         <OrbitControls
           enablePan={false}
