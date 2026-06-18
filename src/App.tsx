@@ -1470,6 +1470,29 @@ function NewCampaignFlow({ onCancel, onComplete, setView, gallery }: { onCancel:
         deployedAt: serverTimestamp()
       });
 
+      try {
+        void fetch('https://api.vegaai.site/api/dynamo/campaign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: uid,
+            campaignId: docRef.id,
+            name: formData.name,
+            brief: formData.brief,
+            workspaceType: formData.workspaceType,
+            duration: formData.duration,
+            durationDays: durationDays,
+            status: 'active',
+            createdAt: new Date().toISOString(),
+            deployedAt: new Date().toISOString()
+          })
+        }).catch((e) => {
+          console.error('DynamoDB sync failed', e);
+        });
+      } catch (e) {
+        console.error('DynamoDB sync failed', e);
+      }
+
       // 2. Fetch discordUserId, telegramChatId, and deliveryChannel from users/{uid}/brandBrain/current
       let discordUserId = "";
       let telegramChatId = "";
