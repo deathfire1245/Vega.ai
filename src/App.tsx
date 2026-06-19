@@ -29,7 +29,7 @@ import {
   signInWithPopup
 } from "firebase/auth";
 import { doc, getDoc, setDoc, serverTimestamp, collection, addDoc, getDocs, query, orderBy, limit, updateDoc, where } from "firebase/firestore";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+// logo upload now uses the Vega API endpoint instead of Firebase Storage
 import { useBrandBrain } from "./hooks/useBrandBrain";
 import { generateContentPack } from "./services/groqService";
 import { Canvas, useFrame } from '@react-three/fiber';
@@ -894,9 +894,15 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
     try {
       let logoUrl: string | undefined;
       if (data.logo) {
-        const storageRef = ref(getStorage(), `logos/${uid}/logo`);
-        await uploadBytes(storageRef, data.logo);
-        logoUrl = await getDownloadURL(storageRef);
+        const form = new FormData();
+        form.append('logo', data.logo);
+        form.append('userId', uid);
+        const resp = await fetch('https://api.vegaai.site/api/upload-logo', {
+          method: 'POST',
+          body: form
+        });
+        const json = await resp.json();
+        logoUrl = json.url;
       }
 
       const docRef = doc(db, "users", uid, "brandBrain", "current");
@@ -2638,9 +2644,15 @@ function SettingsPage({
       const uid = auth.currentUser.uid;
       let logoUrl = brandData.logoUrl;
       if (logoFile) {
-        const storageRef = ref(getStorage(), `logos/${uid}/logo`);
-        await uploadBytes(storageRef, logoFile);
-        logoUrl = await getDownloadURL(storageRef);
+        const form = new FormData();
+        form.append('logo', logoFile);
+        form.append('userId', uid);
+        const resp = await fetch('https://api.vegaai.site/api/upload-logo', {
+          method: 'POST',
+          body: form
+        });
+        const json = await resp.json();
+        logoUrl = json.url;
       }
       const docRef = doc(db, 'users', uid, 'brandBrain', 'current');
       await setDoc(docRef, {
