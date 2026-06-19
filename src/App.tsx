@@ -1265,7 +1265,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
                           type="button"
                           onClick={() => {
                             if (auth.currentUser) {
-                              const url = `https://discord.com/oauth2/authorize?client_id=1506400226586394624&redirect_uri=https%3A%2F%2Fdod-paying-discipline-items.trycloudflare.com%2Fauth%2Fdiscord%2Fcallback&response_type=code&scope=identify&state=${auth.currentUser.uid}`;
+                              const url = `https://discord.com/oauth2/authorize?client_id=1506400226586394624&redirect_uri=https%3A%2F%2Fapi.vegaai.site%2Fauth%2Fdiscord%2Fcallback&response_type=code&scope=identify&state=${auth.currentUser.uid}`;
                               window.open(url, '_blank');
                             }
                           }}
@@ -1519,7 +1519,7 @@ function NewCampaignFlow({ onCancel, onComplete, setView, gallery }: { onCancel:
       // 3. Trigger endpoint if credentials are present
       if (discordUserId || telegramChatId) {
         try {
-          await fetch("https://dod-paying-discipline-items.trycloudflare.com/deploy", {
+          await fetch("https://api.vegaai.site/deploy", {
             method: "POST",
             headers: {
               "Content-Type": "application/json"
@@ -2676,7 +2676,7 @@ function SettingsPage({
   const launchDiscord = () => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
-    const url = `https://discord.com/oauth2/authorize?client_id=1506400226586394624&redirect_uri=https%3A%2F%2Fdod-paying-discipline-items.trycloudflare.com%2Fauth%2Fdiscord%2Fcallback&response_type=code&scope=identify&state=${uid}`;
+    const url = `https://discord.com/oauth2/authorize?client_id=1506400226586394624&redirect_uri=https%3A%2F%2Fapi.vegaai.site%2Fauth%2Fdiscord%2Fcallback&response_type=code&scope=identify&state=${uid}`;
     window.location.href = url;
   };
 
@@ -3260,7 +3260,7 @@ function WorkstationPage({ campaigns, onboardingData }: {
     if (!workspaceId || !auth.currentUser) return;
     setIsSubmitting(true);
     try {
-      await fetch('https://dod-paying-discipline-items.trycloudflare.com/approve', {
+      await fetch('https://api.vegaai.site/approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: auth.currentUser.uid, workspaceId })
@@ -3272,7 +3272,7 @@ function WorkstationPage({ campaigns, onboardingData }: {
     if (!workspaceId || !auth.currentUser) return;
     setIsSubmitting(true);
     try {
-      await fetch('https://dod-paying-discipline-items.trycloudflare.com/reject', {
+      await fetch('https://api.vegaai.site/reject', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: auth.currentUser.uid, workspaceId })
