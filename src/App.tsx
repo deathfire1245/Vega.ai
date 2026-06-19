@@ -913,7 +913,6 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
         targetAudience: data.audience,
         contentPillars: [], // Not currently in onboarding UI, so default to empty
         deliveryChannel: deliveryChannel,
-        workspaceType: data.workspaceType,
         logoUrl: logoUrl || null
       }, { merge: true });
       onComplete(data);
