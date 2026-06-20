@@ -94,6 +94,9 @@ class Wan22:
             num_inference_steps=25,
         )
         frame = output.frames[0][0]
+        from PIL import Image
+        if not hasattr(frame, "save"):
+            frame = Image.fromarray((frame * 255).astype("uint8") if frame.max() <= 1.0 else frame.astype("uint8"))
         buf = io.BytesIO()
         frame.save(buf, format="PNG")
         return buf.getvalue()
