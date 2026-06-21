@@ -823,6 +823,7 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
   const [deliveryChannel, setDeliveryChannel] = useState<'discord' | 'telegram' | 'both'>('discord');
   const [telegramConnected, setTelegramConnected] = useState(false);
   const [discordConnected, setDiscordConnected] = useState(false);
+  const [hasJoinedServer, setHasJoinedServer] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [data, setData] = useState({
     brandName: '',
@@ -875,6 +876,10 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
       }
       if ((deliveryChannel === 'telegram' || deliveryChannel === 'both') && !telegramConnected) {
         setValidationError('Connect Telegram before launching.');
+        return;
+      }
+      if ((deliveryChannel === 'discord' || deliveryChannel === 'both') && !hasJoinedServer) {
+        setValidationError('Confirm that you joined the Vega Discord server before launching.');
         return;
       }
       await handleLaunch();
@@ -997,6 +1002,11 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
     { id: 'instagram', label: 'Instagram' },
     { id: 'tiktok', label: 'TikTok' }
   ];
+
+  const isLaunchDisabled = step === 7 && (
+    (deliveryChannel === 'discord' || deliveryChannel === 'both') && (!discordConnected || !hasJoinedServer) ||
+    (deliveryChannel === 'telegram' || deliveryChannel === 'both') && !telegramConnected
+  );
 
   return (
     <div className="min-h-screen bg-ivory flex flex-col">
@@ -1262,8 +1272,34 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
                         Connect your Discord account to receive workspace assets and updates.
                       </p>
                       {discordConnected ? (
-                        <div className="w-full bg-black text-ivory p-6 font-bold uppercase text-sm tracking-widest shadow-hard text-center">
-                          ✅ DISCORD CONNECTED
+                        <div className="space-y-6">
+                          <div className="w-full bg-black text-ivory p-6 font-bold uppercase text-sm tracking-widest shadow-hard text-center">
+                            ✅ DISCORD CONNECTED
+                          </div>
+
+                          <div className="border-2 border-amber bg-amber/10 p-6 shadow-hard">
+                            <h4 className="text-xl font-display tracking-tighter mb-3">⚠️ One more step</h4>
+                            <p className="text-xs font-bold uppercase tracking-widest opacity-60 mb-4">
+                              Vega delivers your content through our Discord server. You need to join it for the bot to be able to DM you — if you&apos;re not in the server, message delivery will silently fail.
+                            </p>
+                            <a
+                              href="https://discord.gg/zRKqF5SvGT"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-block w-full text-center bg-black text-ivory px-6 py-4 font-bold uppercase text-sm tracking-widest hover:bg-deep-red transition-all shadow-hard"
+                            >
+                              Join Vega Server
+                            </a>
+                            <label className="mt-6 flex items-center gap-3 text-sm font-bold uppercase tracking-widest">
+                              <input
+                                type="checkbox"
+                                checked={hasJoinedServer}
+                                onChange={(e) => setHasJoinedServer(e.target.checked)}
+                                className="w-4 h-4 border-2 border-black text-black"
+                              />
+                              I&apos;ve joined the Vega Discord server
+                            </label>
+                          </div>
                         </div>
                       ) : (
                         <button
@@ -1342,8 +1378,8 @@ function OnboardingFlow({ onComplete, onBack }: { onComplete: (data: any) => voi
                 </button>
                 <button 
                   onClick={handleContinue}
-                  disabled={isSaving}
-                  className={`bg-deep-red text-ivory px-12 py-6 font-bold uppercase text-sm tracking-[0.3em] transition-all shadow-hard ${isSaving ? 'bg-black/20 cursor-not-allowed' : 'hover:bg-black'}`}
+                  disabled={isSaving || isLaunchDisabled}
+                  className={`bg-deep-red text-ivory px-12 py-6 font-bold uppercase text-sm tracking-[0.3em] transition-all shadow-hard ${isSaving || isLaunchDisabled ? 'bg-black/20 cursor-not-allowed' : 'hover:bg-black'}`}
                 >
                   {isSaving ? 'SAVING...' : (step === 7 ? 'LAUNCH DASHBOARD' : 'CONTINUE')}
                 </button>
