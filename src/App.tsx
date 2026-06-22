@@ -167,6 +167,7 @@ export default function App() {
   const [view, setView] = useState<AppView>('landing');
   const [authMode, setAuthMode] = useState<'signup' | 'login'>('signup');
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const hasActiveWorkspace = campaigns.some(c => c.status === 'active');
   const [assets, setAssets] = useState<Asset[]>(MOCK_ASSETS);
   const [gallery, setGallery] = useState<GalleryItem[]>(MOCK_GALLERY);
   const [remixesToday, setRemixesToday] = useState(0);
@@ -236,6 +237,7 @@ export default function App() {
         onCancel={() => setView('dashboard')}
         onComplete={addCampaign}
         setView={setView}
+        hasActiveWorkspace={hasActiveWorkspace}
       />
     );
   }
@@ -1472,7 +1474,7 @@ function formatExpiryDate(campaign: Campaign): string {
   return `Expires on ${formattedDate}`;
 }
 
-function NewCampaignFlow({ onCancel, onComplete, setView, gallery }: { onCancel: () => void, onComplete: (c: Campaign) => void, setView: (v: AppView) => void, gallery: GalleryItem[] }) {
+function NewCampaignFlow({ onCancel, onComplete, setView, gallery, hasActiveWorkspace }: { onCancel: () => void, onComplete: (c: Campaign) => void, setView: (v: AppView) => void, gallery: GalleryItem[], hasActiveWorkspace: boolean }) {
   const { brandBrain } = useBrandBrain();
   const [step, setStep] = useState(1);
   const [isDeploying, setIsDeploying] = useState(false);
@@ -1486,6 +1488,10 @@ function NewCampaignFlow({ onCancel, onComplete, setView, gallery }: { onCancel:
 
   const handleDeploy = async () => {
     if (!auth.currentUser) return;
+    if (hasActiveWorkspace) {
+      setError('You already have an active workspace running. Please wait for it to finish before deploying a new one.');
+      return;
+    }
     setIsDeploying(true);
     setError(null);
     const uid = auth.currentUser.uid;
@@ -1865,12 +1871,14 @@ function CampaignsPage({
   campaigns, 
   onNewCampaign,
   onUpdateCampaigns,
-  isLoading
+  isLoading,
+  hasActiveWorkspace
 }: { 
   campaigns: Campaign[], 
   onNewCampaign: () => void,
   onUpdateCampaigns: (c: Campaign[]) => void,
-  isLoading?: boolean
+  isLoading?: boolean,
+  hasActiveWorkspace: boolean
 }) {
   const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'COMPLETED' | 'DRAFT' | 'ARCHIVED'>('ALL');
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
@@ -1926,12 +1934,20 @@ function CampaignsPage({
         <div className="py-32 border-4 border-black border-dashed flex flex-col items-center justify-center text-center animate-in fade-in duration-700">
            <h3 className="text-6xl font-display uppercase tracking-widest opacity-10 mb-8">NO {filter} WORKSPACES</h3>
            <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 max-w-sm mb-12">Your first workspace is just one brief away. Feed the brain.</p>
-           <button 
-            onClick={onNewCampaign}
-            className="bg-deep-red text-ivory px-10 py-5 font-bold uppercase text-[10px] tracking-widest shadow-hard hover:bg-black transition-all flex items-center gap-3"
-           >
-             <Plus size={16} /> NEW WORKSPACE
-           </button>
+           <div className="flex flex-col items-center gap-2">
+             <button 
+              onClick={hasActiveWorkspace ? undefined : onNewCampaign}
+              disabled={hasActiveWorkspace}
+              className={`bg-deep-red text-ivory px-10 py-5 font-bold uppercase text-[10px] tracking-widest shadow-hard transition-all flex items-center gap-3 ${hasActiveWorkspace ? 'opacity-50 cursor-not-allowed' : 'hover:bg-black'}`}
+             >
+               <Plus size={16} /> NEW WORKSPACE
+             </button>
+             {hasActiveWorkspace && (
+               <p className="text-[10px] font-bold uppercase tracking-widest text-deep-red/80 max-w-xs text-center">
+                 You already have an active workspace. Wait for it to complete before deploying a new one.
+               </p>
+             )}
+           </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 text-left">
@@ -2030,8 +2046,10 @@ function CampaignsPage({
           {Array.from({ length: 1 }).map((_, i) => (
              <button 
               key={`slot-${i}`}
-              onClick={onNewCampaign}
-              className="bg-ivory border-4 border-black border-dashed p-8 shadow-hard flex flex-col items-center justify-center text-center opacity-40 hover:opacity-100 transition-all group"
+              type="button"
+              onClick={hasActiveWorkspace ? undefined : onNewCampaign}
+              disabled={hasActiveWorkspace}
+              className={`bg-ivory border-4 border-black border-dashed p-8 shadow-hard flex flex-col items-center justify-center text-center transition-all group ${hasActiveWorkspace ? 'opacity-50 cursor-not-allowed' : 'opacity-40 hover:opacity-100'}`}
              >
                 <div className="w-12 h-12 border-2 border-black rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                    <Plus size={24} />
@@ -2347,7 +2365,7 @@ function AssetDeleteModal({ onConfirm, onCancel }: { onConfirm: () => void, onCa
   );
 }
 
-function AnalyticsPage({ campaigns, isLoading }: { campaigns: Campaign[], isLoading?: boolean }) {
+function AnalyticsPage({ campaigns, isLoading, hasActiveWorkspace }: { campaigns: Campaign[], isLoading?: boolean, hasActiveWorkspace: boolean }) {
   const [dateRange, setDateRange] = useState('LAST 7 DAYS');
   
   if (isLoading) {
@@ -2396,7 +2414,20 @@ function AnalyticsPage({ campaigns, isLoading }: { campaigns: Campaign[], isLoad
       <div className="py-32 border-4 border-black border-dashed flex flex-col items-center justify-center text-center animate-in fade-in duration-700">
          <h3 className="text-6xl font-display uppercase tracking-widest opacity-10 mb-8">NO DATA YET</h3>
          <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 max-w-sm mb-12">Launch your first workspace to start tracking performance metrics.</p>
-         <button className="bg-deep-red text-ivory px-10 py-5 font-bold uppercase text-[10px] tracking-widest shadow-hard hover:bg-black transition-all">CREATE WORKSPACE</button>
+         <div className="flex flex-col items-center gap-2">
+           <button 
+             onClick={hasActiveWorkspace ? undefined : () => {}}
+             disabled={hasActiveWorkspace}
+             className={`bg-deep-red text-ivory px-10 py-5 font-bold uppercase text-[10px] tracking-widest shadow-hard transition-all ${hasActiveWorkspace ? 'opacity-50 cursor-not-allowed' : 'hover:bg-black'}`}
+           >
+             CREATE WORKSPACE
+           </button>
+           {hasActiveWorkspace && (
+             <p className="text-[10px] font-bold uppercase tracking-widest text-deep-red/80 max-w-xs text-center">
+               You already have an active workspace. Wait for it to complete before deploying a new one.
+             </p>
+           )}
+         </div>
       </div>
     );
   }
@@ -3725,6 +3756,7 @@ function DashboardPlaceholder({
   const [labResult, setLabResult] = useState<string | null>(null);
   const [isGeneratingLab, setIsGeneratingLab] = useState(false);
   const [showToast, setShowToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+  const hasActiveWorkspace = campaigns.some(c => c.status === 'active');
 
   useEffect(() => {
     async function fetchCampaigns() {
@@ -3845,13 +3877,21 @@ function DashboardPlaceholder({
             </h1>
           </div>
           {(activeTab === 'Dashboard' || activeTab === 'Workspaces') && (
-            <button 
-                onClick={onNewCampaign}
-                className="bg-deep-red text-ivory px-8 py-5 font-bold uppercase text-xs tracking-widest shadow-hard hover:bg-black transition-all flex items-center gap-3 group"
-            >
-                <Plus size={18} className="group-hover:rotate-90 transition-transform" />
-                New Workspace
-            </button>
+            <div className="flex flex-col items-start gap-2">
+              <button 
+                  onClick={onNewCampaign}
+                  disabled={hasActiveWorkspace}
+                  className={`bg-deep-red text-ivory px-8 py-5 font-bold uppercase text-xs tracking-widest shadow-hard transition-all flex items-center gap-3 group ${hasActiveWorkspace ? 'opacity-50 cursor-not-allowed' : 'hover:bg-black'}`}
+              >
+                  <Plus size={18} className="group-hover:rotate-90 transition-transform" />
+                  New Workspace
+              </button>
+              {hasActiveWorkspace && (
+                <p className="text-[10px] font-bold uppercase tracking-widest text-deep-red/80 max-w-[320px]">
+                  You already have an active workspace. Wait for it to complete before deploying a new one.
+                </p>
+              )}
+            </div>
           )}
         </header>
 
@@ -3960,6 +4000,7 @@ function DashboardPlaceholder({
             onNewCampaign={onNewCampaign} 
             onUpdateCampaigns={setCampaigns}
             isLoading={isFetching}
+            hasActiveWorkspace={hasActiveWorkspace}
           />
         )}
 
