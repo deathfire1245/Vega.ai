@@ -355,7 +355,7 @@ export default function App() {
               
               <div className="max-w-xl stagger-fade-in delay-300">
                 <p className="text-xl md:text-2xl font-medium mb-10 leading-snug">
-                  Describe your product. Vega AI builds your tweets, reels, emails, memes and posters — then schedules, tracks and gets smarter.
+                  AI-generated images and videos, delivered daily to your Discord or Telegram. Brand Brain gets smarter every campaign.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4">
                   <button 
@@ -445,17 +445,19 @@ export default function App() {
             {[...Array(4)].map((_, i) => (
               <div key={i} className="flex gap-8 items-center text-ivory font-display text-4xl uppercase tracking-widest leading-none">
                 <span className="text-amber">✦</span>
-                <span>TWEETS</span>
+                <span>IMAGES</span>
                 <span className="text-amber">✦</span>
-                <span>LINKEDIN</span>
+                <span>VIDEOS</span>
                 <span className="text-amber">✦</span>
-                <span>REEL SCRIPTS</span>
+                <span>BRAND BRAIN</span>
                 <span className="text-amber">✦</span>
-                <span>EMAIL COPY</span>
+                <span>DISCORD DELIVERY</span>
                 <span className="text-amber">✦</span>
-                <span>MEMES</span>
+                <span>TELEGRAM DELIVERY</span>
                 <span className="text-amber">✦</span>
-                <span>POSTERS</span>
+                <span>TREND SCOUTING</span>
+                <span className="text-amber">✦</span>
+                <span>AI AGENTS</span>
                 <span className="text-amber">✦</span>
               </div>
             ))}
@@ -489,8 +491,8 @@ export default function App() {
             {[
               { title: "Full Workspace Generation", desc: "Multi-channel content strategy created in less time than it takes to brew coffee." },
               { title: "Brand Brain", desc: "We analyze your past wins to mimic your exact brand voice and tone perfectly." },
-              { title: "Auto Scheduling", desc: "Set it and forget it. Vega knows exactly when to post for maximum reach." },
-              { title: "Meme & Viral Content", desc: "Current trend monitoring to generate highly sharable, viral-ready content daily." }
+              { title: "Scout Agent", desc: "Monitors trends across the web daily. Sends you what's relevant to your brand before you even ask." },
+              { title: "AI Video Generation", desc: "Wan2.2 Flash on A100 GPUs. Real video, real quality, generated fresh every campaign." }
             ].map((feature, idx) => (
               <div 
                 key={idx} 
@@ -502,6 +504,86 @@ export default function App() {
                 <div className="mt-8 flex items-center gap-2 font-bold uppercase text-xs tracking-widest opacity-0 group-hover:opacity-100 transform translate-x-[-10px] group-hover:translate-x-0 transition-all">
                   Learn More <ArrowRight size={14} />
                 </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* 6. PRICING SECTION */}
+        <section className="py-24 px-6 max-w-[1440px] mx-auto bg-ivory border-y-2 border-black">
+          <h2 className="text-7xl font-display mb-8 tracking-tighter">PRICING</h2>
+          <div className="bg-deep-red text-ivory p-8 mb-16 border-2 border-deep-red">
+            <p className="text-center text-lg font-bold">🎉 Everything is free during our early access launch — no credit card required.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {[
+              {
+                name: "FREE",
+                price: "$0",
+                period: "/ mo",
+                features: [
+                  "1 Workspace",
+                  "Manual content delivery",
+                  "Brand Brain",
+                  "Discord & Telegram delivery"
+                ],
+                popular: false
+              },
+              {
+                name: "PRO",
+                price: "$14.99",
+                period: "/ mo",
+                features: [
+                  "2 Workspaces",
+                  "Autopilot mode",
+                  "Brand Brain",
+                  "Discord & Telegram delivery",
+                  "Priority generation"
+                ],
+                popular: true
+              },
+              {
+                name: "CREATOR",
+                price: "$29.99",
+                period: "/ mo",
+                features: [
+                  "5 Workspaces",
+                  "Autopilot mode",
+                  "Brand Brain",
+                  "Discord & Telegram delivery",
+                  "Scout Agent (trend monitoring)",
+                  "Priority generation"
+                ],
+                popular: false
+              }
+            ].map((plan, idx) => (
+              <div 
+                key={idx}
+                className={`border-2 p-8 flex flex-col ${
+                  plan.popular 
+                    ? 'border-amber bg-amber/5 scale-105' 
+                    : 'border-black'
+                }`}
+              >
+                <h3 className="text-2xl font-display font-bold mb-2 tracking-tight">{plan.name}</h3>
+                <div className="mb-8">
+                  <span className="text-4xl font-display font-bold">{plan.price}</span>
+                  <span className="text-sm opacity-60 font-bold">{plan.period}</span>
+                </div>
+                <ul className="flex-1 space-y-3 mb-8">
+                  {plan.features.map((feature, fidx) => (
+                    <li key={fidx} className="flex items-start gap-3 text-sm">
+                      <Check size={16} className="flex-shrink-0 mt-0.5 text-deep-red" />
+                      <span>{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+                <button 
+                  onClick={() => { setAuthMode('signup'); setView('auth'); }}
+                  className="w-full bg-deep-red text-ivory py-4 font-bold uppercase text-sm tracking-[0.2em] hover:bg-black transition-colors"
+                >
+                  GET STARTED
+                </button>
               </div>
             ))}
           </div>
@@ -549,7 +631,7 @@ export default function App() {
           </div>
           
           <div className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40">
-            © 2025 Vega AI — Built for the bold.
+            © 2026 Vega AI — Built for the bold.
           </div>
         </div>
       </footer>
@@ -1777,7 +1859,7 @@ function NewCampaignFlow({ onCancel, onComplete, setView, gallery, hasActiveWork
   );
 }
 
-function DeleteConfirmationModal({ onConfirm, onCancel }: { onConfirm: () => void, onCancel: () => void }) {
+function DeleteConfirmationModal({ onConfirm, onCancel, error }: { onConfirm: () => void, onCancel: () => void, error?: string | null }) {
   return (
     <div className="fixed inset-0 z-[200] bg-black/60 flex items-center justify-center p-6 backdrop-blur-sm">
       <motion.div 
@@ -1789,6 +1871,12 @@ function DeleteConfirmationModal({ onConfirm, onCancel }: { onConfirm: () => voi
         <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-8 leading-relaxed">
           Deleting this workspace will permanently remove all generated assets and scheduled posts. This action cannot be undone.
         </p>
+        {error && (
+          <div className="mb-6 p-4 border-2 border-deep-red bg-deep-red/5 flex items-center gap-3 text-[10px] font-bold uppercase tracking-widest text-deep-red">
+            <AlertCircle size={16} />
+            {error}
+          </div>
+        )}
         <div className="flex flex-col gap-4">
           <button 
             onClick={onConfirm}
@@ -1883,6 +1971,7 @@ function CampaignsPage({
   const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'COMPLETED' | 'DRAFT' | 'ARCHIVED'>('ALL');
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
 
   if (isLoading) {
@@ -1898,9 +1987,31 @@ function CampaignsPage({
     return c.status.toUpperCase() === filter;
   });
 
-  const handleDelete = (id: string) => {
-    onUpdateCampaigns(campaigns.filter(c => c.id !== id));
-    setShowDeleteModal(null);
+  const handleDelete = async (id: string) => {
+    setDeleteError(null);
+    if (!auth.currentUser) {
+      setDeleteError('Failed to delete workspace. Please try again.');
+      return;
+    }
+
+    try {
+      const response = await fetch('https://api.vegaai.site/api/delete-workspace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: auth.currentUser.uid, workspaceId: id })
+      });
+
+      if (!response.ok) {
+        throw new Error('Delete request failed');
+      }
+
+      onUpdateCampaigns(campaigns.filter(c => c.id !== id));
+      setShowDeleteModal(null);
+      setDeleteError(null);
+    } catch (err) {
+      console.error('Failed to delete workspace:', err);
+      setDeleteError('Failed to delete workspace. Please try again.');
+    }
   };
 
   const handleArchive = (id: string) => {
@@ -2064,8 +2175,12 @@ function CampaignsPage({
       <AnimatePresence>
         {showDeleteModal && (
           <DeleteConfirmationModal 
+            error={deleteError}
             onConfirm={() => handleDelete(showDeleteModal)} 
-            onCancel={() => setShowDeleteModal(null)} 
+            onCancel={() => {
+              setShowDeleteModal(null);
+              setDeleteError(null);
+            }} 
           />
         )}
       </AnimatePresence>
