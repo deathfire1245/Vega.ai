@@ -3422,7 +3422,7 @@ function WorkstationPage({ campaigns, onboardingData }: {
   const [workspaceName, setWorkspaceName] = useState('NO ACTIVE WORKSPACE');
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const activeCampaign = campaigns.find(c => c.status === 'active') || null;
+  const activeCampaign = campaigns.find(c => c.status === 'active' || c.status === 'done') || null;
 
   useEffect(() => {
     if (activeCampaign) {
@@ -3873,7 +3873,7 @@ function DashboardPlaceholder({
   const [isGeneratingLab, setIsGeneratingLab] = useState(false);
   const [showToast, setShowToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
   const hasActiveWorkspace = campaigns.some(c => c.status === 'active');
-  const activeWorkspaceId = campaigns.find(c => c.status === 'active')?.id ?? null;
+  const activeWorkspaceId = campaigns.find(c => c.status === 'active' || c.status === 'done')?.id ?? null;
   const [dashboardGallery, setDashboardGallery] = useState<{ id: string; mediaUrl: string; caption: string; contentType: string; format?: string; }[]>([]);
   const [galleryLoading, setGalleryLoading] = useState(false);
 
