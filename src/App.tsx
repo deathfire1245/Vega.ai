@@ -3983,6 +3983,16 @@ function DashboardPlaceholder({
     }, 2000);
   };
 
+  const handleDownloadMedia = (mediaUrl: string, contentType: string, format?: string, index?: number) => {
+    const extension = format || (contentType.toLowerCase() === 'video' ? 'mp4' : 'jpg');
+    const link = document.createElement('a');
+    link.href = mediaUrl;
+    link.download = `vega-${contentType}-${index ?? 'download'}.${extension}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="min-h-screen bg-ivory flex">
       {/* Sidebar */}
@@ -4154,11 +4164,17 @@ function DashboardPlaceholder({
                                 />
                               )}
                             </div>
-                            <div className="p-6">
+                            <div className="p-6 flex flex-col gap-4">
                               <p className="text-[10px] uppercase tracking-widest text-black/50 mb-2">
                                 {item.contentType || 'unknown'}{item.format ? ` · ${item.format}` : ''}
                               </p>
                               <p className="text-sm text-black leading-snug">{item.caption || 'No caption available.'}</p>
+                              <button
+                                onClick={() => handleDownloadMedia(item.mediaUrl, item.contentType, item.format, dashboardGallery.indexOf(item))}
+                                className="border-2 border-black text-black bg-white px-5 py-3 font-bold uppercase text-[10px] tracking-widest hover:bg-black hover:text-ivory transition-colors"
+                              >
+                                Download
+                              </button>
                             </div>
                           </div>
                         );
