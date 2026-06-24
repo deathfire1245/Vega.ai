@@ -3094,20 +3094,21 @@ function GalleryPage() {
   useEffect(() => {
     let canceled = false;
     const loadGallery = async () => {
-      if (!auth.currentUser) {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
         setLoading(false);
         return;
       }
-      setUserId(auth.currentUser.uid);
+      setUserId(currentUser.uid);
       try {
-        const campaignQuery = query(collection(db, 'users', auth.currentUser.uid, 'campaigns'), orderBy('createdAt', 'desc'));
+        const campaignQuery = query(collection(db, 'users', currentUser.uid, 'campaigns'), orderBy('createdAt', 'desc'));
         const campaignSnap = await getDocs(campaignQuery);
         const galleryItems: GalleryCard[] = [];
 
         await Promise.all(campaignSnap.docs.map(async campaignDoc => {
           const campaignData = campaignDoc.data();
           const campaignName = campaignData.name || campaignDoc.id;
-          const gallerySnap = await getDocs(collection(db, 'users', auth.currentUser.uid, 'campaigns', campaignDoc.id, 'gallery'));
+          const gallerySnap = await getDocs(collection(db, 'users', currentUser.uid, 'campaigns', campaignDoc.id, 'gallery'));
           gallerySnap.docs.forEach(itemDoc => {
             const data = itemDoc.data() as any;
             const url = data.mediaUrl || data.url || data.imageUrl || '';
@@ -3872,6 +3873,47 @@ function DashboardPlaceholder({
   const [isGeneratingLab, setIsGeneratingLab] = useState(false);
   const [showToast, setShowToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
   const hasActiveWorkspace = campaigns.some(c => c.status === 'active');
+  const activeWorkspaceId = campaigns.find(c => c.status === 'active')?.id ?? null;
+  const [dashboardGallery, setDashboardGallery] = useState<{ id: string; mediaUrl: string; caption: string; contentType: string; format?: string; }[]>([]);
+  const [galleryLoading, setGalleryLoading] = useState(false);
+
+  useEffect(() => {
+    const currentUser = auth.currentUser;
+    if (!currentUser || !activeWorkspaceId) return;
+
+    let canceled = false;
+    const loadGallery = async () => {
+      setGalleryLoading(true);
+      try {
+        const galleryQuery = query(
+          collection(db, 'users', currentUser.uid, 'campaigns', activeWorkspaceId, 'gallery'),
+          orderBy('createdAt', 'desc'),
+          limit(10)
+        );
+        const gallerySnap = await getDocs(galleryQuery);
+        if (canceled) return;
+
+        const items = gallerySnap.docs.map(doc => {
+          const data = doc.data() as any;
+          return {
+            id: doc.id,
+            mediaUrl: data.mediaUrl || data.url || data.imageUrl || '',
+            caption: data.caption || data.title || '',
+            contentType: data.contentType || '',
+            format: data.format || ''
+          };
+        });
+        setDashboardGallery(items);
+      } catch (err) {
+        console.error('Error loading dashboard gallery:', err);
+      } finally {
+        if (!canceled) setGalleryLoading(false);
+      }
+    };
+
+    loadGallery();
+    return () => { canceled = true; };
+  }, [auth.currentUser, activeWorkspaceId]);
 
   useEffect(() => {
     async function fetchCampaigns() {
@@ -4076,7 +4118,56 @@ function DashboardPlaceholder({
                   </div>
                 )}
               </div>
-              
+
+              {activeWorkspaceId && (
+                <section className="lg:col-span-2 border-2 border-black bg-ivory shadow-hard p-8">
+                  <h3 className="text-xl font-display mb-6 uppercase tracking-tighter">GENERATED CONTENT</h3>
+                  {galleryLoading ? (
+                    <div className="border-2 border-black p-20 shadow-hard bg-ivory flex items-center justify-center">
+                      <RefreshCcw size={40} className="animate-spin text-black opacity-20" />
+                    </div>
+                  ) : dashboardGallery.length === 0 ? (
+                    <div className="border-2 border-black p-20 shadow-hard bg-ivory text-center">
+                      <p className="text-sm font-bold uppercase tracking-widest opacity-60">No content yet — your first piece arrives at 9AM.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      {dashboardGallery.map(item => {
+                        const isVideo = item.contentType.toLowerCase() === 'video' || item.format?.toLowerCase() === 'mp4';
+                        return (
+                          <div key={item.id} className="border-2 border-black overflow-hidden bg-white shadow-hard flex flex-col">
+                            <div className="relative h-72 bg-black overflow-hidden">
+                              {isVideo ? (
+                                <video
+                                  controls
+                                  autoPlay
+                                  muted
+                                  loop
+                                  src={item.mediaUrl}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <img
+                                  src={item.mediaUrl}
+                                  alt={item.caption}
+                                  className="h-full w-full object-cover"
+                                />
+                              )}
+                            </div>
+                            <div className="p-6">
+                              <p className="text-[10px] uppercase tracking-widest text-black/50 mb-2">
+                                {item.contentType || 'unknown'}{item.format ? ` · ${item.format}` : ''}
+                              </p>
+                              <p className="text-sm text-black leading-snug">{item.caption || 'No caption available.'}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+              )}
+
               <div className="space-y-8">
                 <div className="bg-amber border-2 border-black p-8 shadow-hard relative overflow-hidden">
                    <div className="absolute top-0 right-0 w-24 h-24 bg-black/5 translate-x-12 -translate-y-12 rotate-45" />
