@@ -821,15 +821,6 @@ function SignUpView({ onBack, onSuccess, initialMode = 'signup' }: { onBack: () 
                 >
                   {isSubmitting ? 'PROCESSING...' : (viewMode === 'signup' ? 'START BUILDING' : 'LOGIN TO VEGA')}
                 </button>
-
-                <button 
-                  type="button"
-                  onClick={handleGoogleLogin}
-                  disabled={isSubmitting}
-                  className="w-full border-2 border-black py-6 font-bold uppercase text-sm tracking-[0.3em] hover:bg-black hover:text-ivory transition-all shadow-hard flex items-center justify-center gap-3"
-                >
-                  <Globe size={20} /> CONTINUE WITH GOOGLE
-                </button>
               </div>
 
               <div className="text-center space-y-4">
@@ -1897,6 +1888,53 @@ function DeleteConfirmationModal({ onConfirm, onCancel, error }: { onConfirm: ()
 }
 
 function CampaignDetailView({ campaign, onBack }: { campaign: Campaign, onBack: () => void }) {
+  const [workspaceGallery, setWorkspaceGallery] = useState<{ id: string; mediaUrl: string; caption: string; contentType: string; format?: string; }[]>([]);
+  const [galleryLoading, setGalleryLoading] = useState(false);
+
+  const handleDownloadWorkspaceMedia = (mediaUrl: string, contentType: string, format?: string, index?: number) => {
+    const ext = format || (contentType.toLowerCase() === 'video' ? 'mp4' : 'jpg');
+    const link = document.createElement('a');
+    link.href = mediaUrl;
+    link.download = `vega-${contentType.toLowerCase()}-${index ?? 'download'}.${ext}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  useEffect(() => {
+    let canceled = false;
+    const loadGallery = async () => {
+      const currentUser = auth.currentUser;
+      if (!currentUser) return;
+      setGalleryLoading(true);
+      try {
+        const galleryQuery = query(
+          collection(db, 'users', currentUser.uid, 'campaigns', campaign.id, 'gallery'),
+          orderBy('createdAt', 'desc')
+        );
+        const gallerySnap = await getDocs(galleryQuery);
+        if (canceled) return;
+        const items = gallerySnap.docs.map(doc => {
+          const data = doc.data() as any;
+          return {
+            id: doc.id,
+            mediaUrl: data.mediaUrl || data.url || data.imageUrl || '',
+            caption: data.caption || data.title || '',
+            contentType: data.contentType || (data.format?.toLowerCase() === 'mp4' ? 'video' : 'image'),
+            format: data.format || data.fileType || data.contentType === 'video' ? 'mp4' : 'jpg'
+          };
+        });
+        setWorkspaceGallery(items);
+      } catch (err) {
+        console.error('Failed to load workspace gallery:', err);
+      } finally {
+        if (!canceled) setGalleryLoading(false);
+      }
+    };
+    loadGallery();
+    return () => { canceled = true; };
+  }, [campaign.id]);
+
   return (
     <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <button onClick={onBack} className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] hover:text-deep-red transition-colors group">
@@ -1938,21 +1976,61 @@ function CampaignDetailView({ campaign, onBack }: { campaign: Campaign, onBack: 
                 </div>
               ))}
            </div>
-        </div>
 
-        <div className="space-y-8 text-left">
-           <div className="border-2 border-black p-8 bg-ivory shadow-hard space-y-4">
-              <h4 className="text-xl font-display uppercase tracking-widest">TIMELINE</h4>
-              <p className="text-[10px] font-bold uppercase tracking-widest">Duration: {campaign.duration} Days</p>
-              <div className="w-full h-2 bg-black/10">
-                 <div className="h-full bg-black" style={{ width: `${campaign.progress}%` }} />
-              </div>
-              <p className="text-[8px] font-bold uppercase tracking-widest opacity-40">Created: {campaign.createdAt}</p>
+           <div className="space-y-6">
+             <h3 className="text-2xl font-display border-b-2 border-black pb-4">WORKSPACE MEDIA</h3>
+             {galleryLoading ? (
+               <div className="py-20 border-2 border-black border-dashed flex items-center justify-center bg-ivory">
+                 <RefreshCcw size={40} className="animate-spin text-black opacity-20" />
+               </div>
+             ) : workspaceGallery.length === 0 ? (
+               <div className="py-20 border-2 border-black border-dashed flex items-center justify-center text-[10px] font-bold uppercase opacity-20">
+                 No workspace media yet.
+               </div>
+             ) : (
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                 {workspaceGallery.map((item, idx) => {
+                   const isVideo = item.contentType.toLowerCase() === 'video' || item.format?.toLowerCase() === 'mp4';
+                   return (
+                     <div key={item.id} className="border-2 border-black bg-white shadow-hard overflow-hidden flex flex-col">
+                       <div className="relative h-64 bg-black overflow-hidden">
+                         {isVideo ? (
+                           <video
+                             controls
+                             autoPlay
+                             muted
+                             loop
+                             src={item.mediaUrl}
+                             className="h-full w-full object-cover"
+                           />
+                         ) : (
+                           <img
+                             src={item.mediaUrl}
+                             alt={item.caption}
+                             className="h-full w-full object-cover"
+                           />
+                         )}
+                       </div>
+                       <div className="p-6 flex flex-col gap-3">
+                         <p className="text-[10px] uppercase tracking-widest text-black/50">{item.contentType || 'unknown'}{item.format ? ` · ${item.format}` : ''}</p>
+                         <p className="text-sm text-black leading-snug">{item.caption || 'No caption available.'}</p>
+                         <button
+                           onClick={() => handleDownloadWorkspaceMedia(item.mediaUrl, item.contentType, item.format, idx)}
+                           className="border-2 border-black text-black bg-white px-4 py-3 font-bold uppercase text-[10px] tracking-widest hover:bg-black hover:text-ivory transition-colors"
+                         >
+                           Download
+                         </button>
+                       </div>
+                     </div>
+                   );
+                 })}
+               </div>
+             )}
            </div>
-        </div>
-      </div>
-    </div>
-  );
+         </div>
+       </div>
+     </div>
+   );
 }
 
 function CampaignsPage({ 
@@ -3091,6 +3169,16 @@ function GalleryPage() {
   const [filter, setFilter] = useState<'ALL' | 'IMAGE' | 'VIDEO'>('ALL');
   const [userId, setUserId] = useState<string | null>(null);
 
+  const handleDownloadMedia = (url: string, contentType: string, extension?: string, index?: number) => {
+    const ext = extension || (contentType.toLowerCase() === 'video' ? 'mp4' : 'jpg');
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `vega-${contentType.toLowerCase()}-${index ?? 'download'}.${ext}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   useEffect(() => {
     let canceled = false;
     const loadGallery = async () => {
@@ -3179,10 +3267,12 @@ function GalleryPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
             {filteredItems.map(item => (
-              <button
+              <div
                 key={item.id}
                 onClick={() => setSelected(item)}
-                className="group bg-ivory border-2 border-black shadow-hard overflow-hidden text-left flex flex-col"
+                role="button"
+                tabIndex={0}
+                className="group bg-ivory border-2 border-black shadow-hard overflow-hidden text-left flex flex-col cursor-pointer"
               >
                 <div className="relative h-72 bg-black overflow-hidden">
                   {item.mediaType === 'video' ? (
@@ -3208,8 +3298,18 @@ function GalleryPage() {
                   <p className="text-sm text-black leading-snug overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                     {item.caption || item.prompt || 'No caption available.'}
                   </p>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDownloadMedia(item.url, item.contentType, item.url.split('.').pop()?.toLowerCase(), items.indexOf(item));
+                    }}
+                    className="border-2 border-black text-black bg-white px-4 py-3 font-bold uppercase text-[10px] tracking-widest hover:bg-black hover:text-ivory transition-colors"
+                  >
+                    Download
+                  </button>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         </>
@@ -3422,7 +3522,7 @@ function WorkstationPage({ campaigns, onboardingData }: {
   const [workspaceName, setWorkspaceName] = useState('NO ACTIVE WORKSPACE');
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const activeCampaign = campaigns.find(c => c.status === 'active' || c.status === 'done') || null;
+  const activeCampaign = campaigns.find(c => c.status === 'active' || (c.status as string) === 'done') || null;
 
   useEffect(() => {
     if (activeCampaign) {
@@ -3873,7 +3973,7 @@ function DashboardPlaceholder({
   const [isGeneratingLab, setIsGeneratingLab] = useState(false);
   const [showToast, setShowToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
   const hasActiveWorkspace = campaigns.some(c => c.status === 'active');
-  const activeWorkspaceId = campaigns.find(c => c.status === 'active' || c.status === 'done')?.id ?? null;
+  const activeWorkspaceId = campaigns.find(c => c.status === 'active' || (c.status as string) === 'done')?.id ?? null;
   const [dashboardGallery, setDashboardGallery] = useState<{ id: string; mediaUrl: string; caption: string; contentType: string; format?: string; }[]>([]);
   const [galleryLoading, setGalleryLoading] = useState(false);
 
